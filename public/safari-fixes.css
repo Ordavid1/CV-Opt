@@ -1,0 +1,105 @@
+/* safari-fixes.css - Safari & DuckDuckGo specific CSS fixes */
+
+/* Reset button styles for Safari */
+.safari-browser button,
+.safari-browser .lemonsqueezy-button {
+  -webkit-appearance: none;
+  appearance: none;
+  cursor: pointer;
+}
+
+/* Ensure iframe content is visible */
+.safari-browser iframe {
+  -webkit-transform: translateZ(0);
+  transform: translateZ(0);
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+}
+
+/* Spinner visibility fixes */
+.safari-browser #spinner {
+  /* Ensure spinner is visible over other content */
+  z-index: 10000;
+  position: fixed;
+}
+
+/* Fix for stuck overlay issue - add clickthrough for hidden elements */
+.safari-browser .checkout-overlay:not(.open) {
+  pointer-events: none !important;
+  opacity: 0 !important;
+  visibility: hidden !important;
+}
+
+/* Emergency reset class - applied via JS if things get stuck */
+.safari-browser .reset-all-overlays,
+.safari-browser.reset-all-overlays {
+  pointer-events: none !important;
+  opacity: 0 !important;
+  visibility: hidden !important;
+  position: static !important;
+  transform: none !important;
+  display: none !important;
+}
+
+/* Ensure notifications are visible */
+.safari-browser .notification {
+  z-index: 10001;
+}
+
+/* Improve font rendering */
+.safari-browser body {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+/* Fix for potential sticky hover states */
+.safari-browser button:hover,
+.safari-browser .lemonsqueezy-button:hover {
+  transition: none;
+}
+
+/* Fix modal closing transition */
+.safari-browser #checkout-modal.closing,
+.safari-browser .checkout-overlay.closing {
+  animation: safariFadeOut 0.3s forwards;
+}
+
+@keyframes safariFadeOut {
+  from { opacity: 1; visibility: visible; }
+  to { opacity: 0; visibility: hidden; }
+}
+
+/* Fix for sticky fixed position elements */
+@media screen and (max-width: 768px) {
+  .safari-browser.modal-open {
+    position: fixed;
+    width: 100%;
+    height: 100%;
+  }
+}
+
+/* Emergency payment button */
+.safari-browser .emergency-check-payment {
+  display: inline-block;
+  margin-left: 10px;
+  background-color: #4CAF50;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 8px 12px;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+/* Fix for button transitions */
+.safari-browser button,
+.safari-browser .lemonsqueezy-button {
+  transition-property: transform, box-shadow, background-color;
+}
+
+/* Fix for iframe positioning in Safari */
+.safari-browser .checkout-iframe {
+  position: relative;
+  overflow: hidden;
+}

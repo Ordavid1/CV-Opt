@@ -1,0 +1,1319 @@
+<!--- CV-Opt index.html file --->
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+  <!-- IMPORTANT: Load browser compatibility first -->
+  <script nonce="<%= nonce %>" src="/error-suppressor.js"></script>
+  <script nonce="<%= nonce %>" src="/browser-compatibility.js"></script>
+   
+    <!-- Google tag (gtag.js) -->
+    <script nonce="<%= nonce %>" async src="https://www.googletagmanager.com/gtag/js?id=G-LHH4T6MP6G"></script>
+    <script nonce="<%= nonce %>">
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+      gtag('config', 'G-LHH4T6MP6G');
+    </script>
+    <!-- Enf of Google tag (gtag.js) -->
+
+
+    <!-- Google Tag Manager -->
+    <script>
+    (function(
+      w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
+    new Date().getTime(),event:'gtm.js'});
+    var f=d.getElementsByTagName(s)[0],j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';
+    j.async=true;
+    j.src='https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
+    })
+    (window,document,'script','dataLayer','GTM-PKNFMFZ3');
+    </script>
+    <!-- End Google Tag Manager -->
+
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>AI CV Optimizer - Smart Resume Tailoring Tool</title>
+    
+    <!-- Meta Tags -->
+    <meta name="description" content="Land more interviews with our AI-powered CV optimizer that tailors your resume to specific job descriptions. Get ATS-friendly resumes instantly for just $1. Try now!" />
+    <meta name="keywords" content="CV optimizer, resume optimization, ATS-friendly resume, AI resume writer, job application helper, CV tailoring tool" />
+    <meta name="robots" content="index, follow" />
+    <meta name="author" content="AI CV Optimizer" />
+        <!-- Twitter Card Tags -->
+        <meta name="twitter:card" content="summary_large_image" />
+        <meta name="twitter:title" content="AI CV Optimizer - Smart Resume Tailoring Tool" />
+        <meta name="twitter:description" content="Transform your CV into an ATS-friendly resume tailored for your dream job using AI. Get instant optimization with our smart CV refinement tool." />
+        <meta name="twitter:image" content="https://cvresumeoptimizer.com/og-image.jpg" />
+    
+    <!-- Enhanced Open Graph Tags -->
+    <meta property="og:title" content="AI CV Optimizer - Smart Resume Tailoring Tool" />
+    <meta property="og:description" content="Transform your CV into an ATS-friendly resume tailored for your dream job using AI. Get instant optimization with our smart CV refinement tool." />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://cvresumeoptimizer.com" />
+    <meta property="og:image" content="https://cvresumeoptimizer.com/og-image.jpg" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:site_name" content="AI CV Optimizer" />
+    <meta property="og:locale" content="en_US" />
+    <!-- Fallback image for social sharing -->
+    <meta property="og:image:alt" content="AI CV Optimizer application interface" />
+
+    <!-- Additional Icons -->
+    <link rel="icon" href="/favicon.ico" sizes="any" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png" />
+    <link rel="manifest" href="/site.webmanifest" />
+
+    <!-- Canonical URL -->
+    <link rel="canonical" href="https://cvresumeoptimizer.com" />
+    
+    <link rel="stylesheet" href="/safari-fixes.css">
+    <!-- Load Google Fonts and other assets -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="icon" href="/favicon.ico" />
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="/styles.css" />
+
+    <style>
+      /* Ensure minimal spacing for the transaction message */
+      #result-message {
+        margin: 0;
+        padding: 0.2rem 0;
+        font-size: 1rem;
+      }
+      /* Style additions (inserted text) */
+      #changes ins {
+        background-color: rgb(0, 0, 0);
+        color: #009840;
+        text-decoration: none;
+      }
+      /* Style deletions (removed text) */
+      #changes del {
+        background-color: rgb(0, 0, 0);
+        color: #c01300;
+        text-decoration: line-through;
+      }
+      /* Lemon Squeezy button styles */
+      .lemonsqueezy-button {
+        display: block;
+        background-color: #ffd24c;
+        color: #000000;
+        border: none;
+        border-radius: 25px;
+        padding: 12px 24px;
+        font-size: 16px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: background-color 0.2s;
+        width: 100%;
+        max-width: 300px;
+        margin: 10px auto;
+        text-align: center;
+        text-decoration: none;
+      }
+      .lemonsqueezy-button:hover {
+        background-color: #ffc82e;
+        text-decoration: none;
+      }
+      .lemonsqueezy-button:disabled {
+        opacity: 0.7;
+        cursor: not-allowed;
+        background-color: #ffd24c;
+      }
+      /* Add inside the existing style tag */
+      .notification {
+        position: fixed;
+        top: 20px;
+        left: 50%;
+        transform: translateX(-50%);
+        padding: 10px 20px;
+        background-color: #4CAF50;
+        color: white;
+        border-radius: 4px;
+        z-index: 1000;
+        max-width: 80%;
+        text-align: center;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+        animation: fadeIn 0.3s, fadeOut 0.3s 3.7s;
+      }
+
+      .about-video-container {
+        width: 100%;
+        margin: 1.5rem 0;
+        border-radius: var(--radius);
+        overflow: hidden;
+        box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+      }
+      
+      .about-video {
+        width: 100%;
+        display: block;
+      }
+
+      @keyframes fadeIn {
+        from { opacity: 0; }
+        to { opacity: 1; }
+      }
+
+      @keyframes fadeOut {
+        from { opacity: 1; }
+        to { opacity: 0; }
+      }
+    </style>
+
+  <!-- Structured Data for rich snippets -->
+<script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "AI CV Optimizer",
+    "description": "AI-powered CV optimizer that helps you tailor your resume to specific job descriptions. Get ATS-friendly resumes instantly with our smart CV refinement tool.",
+    "applicationCategory": "BusinessApplication",
+    "offers": {
+      "@type": "Offer",
+      "price": "1.00",
+      "priceCurrency": "USD"
+    },
+    "screenshot": "https://cvresumeoptimizer.com/og-image.jpg",
+    "featureList": "CV optimization, ATS-friendly personlization, Job-specific tailoring",
+    "operatingSystem": "Web browser",
+    "author": {
+      "@type": "Organization",
+      "name": "AI CV Optimizer"
+    }
+  }
+  </script>
+  
+<!-- Additional Organization structured data -->
+<script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "Organization",
+    "name": "AI CV Optimizer",
+    "url": "https://cvresumeoptimizer.com",
+    "logo": "https://cvresumeoptimizer.com/og-image.jpg"
+  }
+  </script>
+  </head>
+<body>
+  <!-- Google Tag Manager (noscript) -->
+  <noscript>
+    <iframe src="https://www.googletagmanager.com/ns.html?id=GTM-PKNFMFZ3"
+       height="0" width="0" style="display:none;visibility:hidden">
+  </iframe>
+  </noscript>
+  <!-- End Google Tag Manager (noscript) -->
+
+
+<!-- About Button - Add this right after the <body> tag in index.ejs -->
+<div id="about-button">About</div>
+
+<!-- Add notification div here -->
+<div id="notification" class="notification" style="display: none;"></div>
+    <section class="hero">
+      <h2>Land Your Dream Job with an AI-Optimized Resume</h2>
+      <p>
+        Our tool analyzes job descriptions and instantly tailors your CV to highlight relevant 
+        skills and experience. ATS-friendly, personalized, and only $1 per optimization!
+      </p>
+      <div id="progress-bar-container">
+        <div id="progress-bar"></div>
+      </div>
+    </section>
+
+    <main class="container">
+      <div class="input-section">
+        <div class="job-input-container">
+          <div class="job-url-group">
+            <label for="jobUrlInput">Job Description URL</label>
+            <input
+              id="jobUrlInput"
+              type="url"
+              placeholder="https://www.linkedin.com/jobs/view/123456789"
+              required
+            />
+          </div>
+          <div class="slider-group">
+            <label for="refineStrength">Refinement Strength</label>
+            <div class="slider-container">
+              <input id="refineStrength" type="range" min="1" max="10" value="5" />
+              <span id="refineStrengthVal">5</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="frameContainer">
+          <iframe id="cvInputFrame" style="width:100%; height:300px; border:1px solid #404040;"></iframe>
+          <iframe id="cvOutputFrame" style="width:100%; height:300px; border:1px solid #404040;"></iframe>
+        </div>
+      </div>
+
+<!-- Checkout Modal -->
+<div id="checkout-modal" class="checkout-overlay">
+  <div class="checkout-container">
+    <div class="checkout-header">
+      <button id="close-checkout" class="checkout-close">&times;</button>
+    </div>
+    <div class="checkout-body">
+      <iframe id="checkout-iframe" class="checkout-iframe" src="about:blank"></iframe>
+    </div>
+  </div>
+</div>
+      
+<!-- Payment Section -->
+<div class="payment-section" style="padding-top: 0; margin-top: 0;">
+  <div class="payment-content" style="gap: 0.1rem;">
+    <div style="text-align: center; width: 100%; margin-bottom: 0.1rem;">
+      <label class="payment-label" style="margin-bottom: 2px; font-size: 1rem;">Just $1 to Personalize Your CV to the Job!</label>
+    </div>
+    <button 
+      id="checkout-button"
+      class="lemonsqueezy-button"
+      style="margin-top: 0; margin-bottom: 0;"
+    >
+      Optimize Me!
+    </button>
+    <p id="result-message" class="transaction-message" style="margin-top: 4px;"></p>
+  </div>
+</div>
+
+<!-- Add this near the payment section in index.ejs -->
+<button id="check-results-button" style="background-color: #4CAF50; color: white; padding: 8px 16px; border: none; border-radius: 4px; margin-top: 10px; cursor: pointer; display: none;">
+  Check Results
+</button>
+
+<script>
+  // Add this to your script section
+  document.getElementById('check-results-button').addEventListener('click', function() {
+    checkRefinementStatus().then(resultFound => {
+      if (!resultFound) {
+        showNotification('Still processing your CV. Please wait a moment.', 'info');
+      }
+    });
+  });
+  
+  // Make the button visible after checkout starts
+  function showCheckResultsButton() {
+    document.getElementById('check-results-button').style.display = 'block';
+  }
+</script>
+
+<!-- In the body section, near the end of the file -->
+<!-- Updated script loading section -->
+ <!-- 4. Network resilience should be loaded early -->
+<script nonce="<%= nonce %>" src="/network-resilience.js"></script>
+<script nonce="<%= nonce %>" src="/debug-utility.js"></script>
+<script nonce="<%= nonce %>">
+  // Debug mode is disabled by default
+  if (window.appDebug) {
+    window.appDebug.enabled = false;
+  }
+  
+  // Debug mode is disabled by default
+  document.addEventListener('keydown', function(e) {
+    if (e.ctrlKey && e.shiftKey && e.key === 'P') {
+      if (window.appDebug) {
+        window.appDebug.enabled = !window.appDebug.enabled;
+        const status = window.appDebug.enabled ? 'enabled' : 'disabled';
+        console.log(`Debug mode ${status}`);
+        
+        // Show notification
+        if (typeof showNotification === 'function') {
+          showNotification(`Debug mode ${status}`, status === 'enabled' ? 'info' : 'success');
+        }
+      }
+    }
+  });
+</script>
+<!-- 2. Then load the direct lemon patch -->
+<script nonce="<%= nonce %>" src="/direct-lemon-patch.js"></script>
+
+<!-- Load LemonSqueezy SDK with error handling -->
+<script nonce="<%= nonce %>" src="https://app.lemonsqueezy.com/js/lemon.js" defer></script>
+
+<!-- Add a fallback in case the main lemon.js fails to load -->
+<script nonce="<%= nonce %>">
+  // Check if Lemon Squeezy script fails to load
+  window.addEventListener('error', function(event) {
+    const target = event.target || {};
+    if (target.tagName === 'SCRIPT' && target.src && target.src.includes('lemon.js')) {
+      console.log('Lemon Squeezy script failed to load, using fallback');
+      
+      // Create a minimal fake LemonSqueezy object
+      window.LemonSqueezy = window.LemonSqueezy || {
+        Setup: function(options) {
+          console.log('Using fallback LemonSqueezy.Setup');
+          window.LemonSqueezyOptions = options;
+          return true;
+        },
+        Url: {
+          Close: function() { },
+          createIframe: function() {
+            const iframe = document.createElement('iframe');
+            iframe.style.width = '100%';
+            iframe.style.height = '100%';
+            iframe.style.border = 'none';
+            return iframe;
+          }
+        }
+      };
+      
+      window.createLemonSqueezy = function() {
+        console.log('Using fallback createLemonSqueezy');
+        return true;
+      };
+    }
+  }, true);
+</script>
+
+<!-- 3. Then load safari-checkout.js -->
+<script nonce="<%= nonce %>" src="/safari-checkout.js"></script>
+<!-- 6. Force payment & refinement tool -->
+
+<!-- 7. Finally load regular app scripts -->
+<script src="/checkout.js" defer></script>
+<script src="/app-scripts.js" defer></script>
+
+
+<section class="changes-section">
+    <h3>Changes Made</h3>
+    <div id="changes"></div>
+  </section>
+</main>
+
+  <div id="status"></div>
+    <!-- Spinner -->
+    <div id="spinner" style="
+    position: fixed;
+    top: 10px;
+    left: 10px;
+    width: 40px;
+    height: 40px;
+    border: 4px solid rgba(255, 255, 255, 0.3);
+    border-top-color: #ffffff;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    z-index: 9999;
+    display: none;
+  "></div>
+
+    <style>
+      @keyframes spin {
+        to { transform: rotate(360deg); }
+      }
+    </style>
+
+<!-- Lemon Squeezy event handler -->
+<script nonce="<%= nonce %>">
+  window.addEventListener('message', function(event) {
+    // console.log("📡 Global message event received:", event.data);
+    
+    // Handle string-based events (our custom events)
+    if (typeof event.data === 'string') {
+      if (event.data === 'checkout-completed' || event.data.includes('success')) {
+        console.log('✅ PAYMENT SUCCESS detected via message event');
+        // Set global flag
+        window.paymentCompleted = true;
+        document.getElementById('result-message').innerHTML = '✅ Payment successful! Processing your request...';
+        
+        // Close the modal after a short delay
+        setTimeout(() => {
+          hideCheckoutModal(); // Call it here when payment succeeds
+          
+          // Start monitoring for results
+          setTimeout(() => {
+            if (currentJobId || localStorage.getItem('currentJobId')) {
+              window.checkoutCompleted = false;
+              const jobId = currentJobId || localStorage.getItem('currentJobId');
+              if (typeof pollRefinementStatus === 'function') {
+                pollRefinementStatus(jobId);
+              } else if (typeof window.monitorForResults === 'function') {
+                window.monitorForResults();
+              } else {
+                window.startRefinement(); // Fallback to direct refinement
+              }
+            }
+          }, 300);
+        }, 700);
+      } else if (event.data === 'checkout-closed') {
+        console.log("❌ Checkout was closed without payment");
+        // Only update message if payment wasn't completed
+        if (!window.paymentCompleted) {
+          document.getElementById('result-message').innerHTML = 
+            '❌ Checkout cancelled. Click the button to try again.';
+        }
+      }
+    }
+    
+    // Handle object-based events (Lemon Squeezy events)
+    if (event.data && typeof event.data === 'object') {
+      if (event.data.type === 'checkout:success' || 
+          (event.data.event && event.data.event === 'checkout:success')) {
+        console.log('✅ PAYMENT SUCCESS detected via Lemon Squeezy object event');
+        window.paymentCompleted = true;
+        document.getElementById('result-message').innerHTML = 
+          '✅ Payment successful! Processing your request...';
+        
+        setTimeout(() => {
+          hideCheckoutModal();
+          
+          setTimeout(() => {
+            const jobId = currentJobId || localStorage.getItem('currentJobId');
+            if (jobId) {
+              window.checkoutCompleted = false;
+              if (typeof pollRefinementStatus === 'function') {
+                pollRefinementStatus(jobId);
+              } else if (typeof window.monitorForResults === 'function') {
+                window.monitorForResults();
+              } else {
+                window.startRefinement();
+              }
+            }
+          }, 300);
+        }, 700);
+      }
+    }
+  }, false);
+</script>
+
+<script nonce="<%= nonce %>">
+  // Global conversation array for multi-turn conversation (initialized on page load)
+  let conversation = [
+    { role: "user", content: "Hello, I'd like to refine my CV. Are you ready?" }
+  ];
+
+  // Helper function to display status messages
+  function showStatus(message, type = "") {
+    const status = document.getElementById("status");
+    status.textContent = message;
+    status.className = `show ${type}`;
+    if (status.timeoutId) {
+      clearTimeout(status.timeoutId);
+    }
+    status.timeoutId = setTimeout(() => {
+      status.className = "";
+    }, 3000);
+  }
+
+// Add the new notification function here
+function showNotification(message, type = 'success') {
+  const notification = document.getElementById('notification');
+  notification.textContent = message;
+  notification.style.backgroundColor = type === 'success' ? '#4CAF50' : '#f44336';
+  notification.style.display = 'block';
+  
+  // Hide after 4 seconds
+  setTimeout(() => {
+    notification.style.display = 'none';
+  }, 4000);
+}  
+
+  // Helper function to display result messages
+  function resultMessage(msg) {
+    document.getElementById("result-message").innerHTML = msg;
+  }
+
+  // Helper function to strip all HTML tags from a string
+  function stripHTML(html) {
+    return html.replace(/<[^>]*>/g, '');
+  }
+
+  // ------------------------------------------ 
+  // Update slider display as the user moves the slider
+  // ------------------------------------------
+  const refineStrengthSlider = document.getElementById("refineStrength");
+  const refineStrengthVal = document.getElementById("refineStrengthVal");
+  refineStrengthSlider.addEventListener("input", () => {
+    refineStrengthVal.textContent = refineStrengthSlider.value;
+  });
+
+  // Normalize and clean CV HTML content
+  function normalizeCV(html) {
+  if (!html) return '';
+  
+  return html
+    // Remove markdown code block markers more thoroughly
+    .replace(/^```[a-zA-Z]*\s*\n?/i, '')  // Start marker with optional language
+    .replace(/```\s*$/i, '')              // End marker
+    .replace(/\n{3,}/g, '\n\n')           // Other normalizations
+    .replace(/<p>\s*<\/p>/gi, '')
+    .replace(/<li>\s+/gi, '<li>')
+    .replace(/\s+<\/li>/gi, '</li>')
+    .replace(/<\/li>\s*(<br\s*\/?>\s*)+<li>/gi, '</li><li>')
+    .replace(/<ul>\s*(<br\s*\/?>\s*)+/gi, '<ul>')
+    .replace(/(<br\s*\/?>\s*)+<\/ul>/gi, '</ul>')
+    .replace(/\s{2,}/g, ' ')
+    .replace(/(<div[^>]*>)\s*(<br\s*\/?>\s*)+/gi, '$1')
+    .replace(/(<br\s*\/?>\s*)+(<\/div>)/gi, '$2')
+    .replace(/(<\/div>)\s*(<div)/gi, '$1\n$2')
+    .trim();
+}
+
+  // Add consistent styling to both input and output frames
+function setupFrame(frame, placeholder) {
+  const doc = frame.contentDocument;
+  if (!doc) return;
+  
+  // Enable editing for input frame - use case-insensitive check
+  if (frame.id === "cvInputFrame") {
+    doc.designMode = 'on';
+    console.log("Edit mode enabled for frame:", placeholder);
+  }
+  
+  // Add consistent styling
+  const styleTag = document.createElement('style');
+  styleTag.textContent = `
+    html, body {
+      margin: 10px;
+      padding: 0;
+      font-family: Arial, sans-serif;
+      color: #ffffff !important;
+      background-color: #1e1e1e !important;
+      line-height: 1.5;
+    }
+    * {
+      color: #ffffff !important;
+      background-color: #1e1e1e !important;
+    }
+    .placeholder {
+      opacity: 0.7;
+      user-select: none;
+    }
+    p, div {
+      margin: 0;
+      padding: 0;
+    }
+    ul, ol {
+      margin: 0;
+      padding-left: 20px;
+    }
+    li {
+      margin: 0;
+      padding: 0;
+    }
+  `;
+  doc.head.appendChild(styleTag);
+  
+  // Set placeholder text
+  doc.body.innerHTML = `<p class="placeholder">${placeholder}</p>`;
+}
+
+// iframe initialization code
+const inputFrame = document.getElementById("cvInputFrame");
+inputFrame.srcdoc = "<html><body></body></html>";
+inputFrame.onload = () => {
+  // First check if we have saved CV content
+  const savedCV = localStorage.getItem('savedCVContent');
+  
+  // Either load the saved content or set up with the placeholder
+  if (savedCV) {
+    const doc = inputFrame.contentDocument;
+    if (doc) {
+      // Set up styles first
+      const styleTag = document.createElement('style');
+      styleTag.textContent = `
+        html, body {
+          margin: 10px;
+          padding: 0;
+          font-family: Arial, sans-serif;
+          color: #ffffff !important;
+          background-color: #1e1e1e !important;
+          line-height: 1.5;
+        }
+        * {
+          color: #ffffff !important;
+          background-color: #1e1e1e !important;
+        }
+        .placeholder {
+          opacity: 0.7;
+          user-select: none;
+        }
+        p, div {
+          margin: 0;
+          padding: 0;
+        }
+        ul, ol {
+          margin: 0;
+          padding-left: 20px;
+        }
+        li {
+          margin: 0;
+          padding: 0;
+        }
+      `;
+      doc.head.appendChild(styleTag);
+      
+      // Enable editing
+      doc.designMode = 'on';
+      
+      // Set content to saved CV
+      doc.body.innerHTML = savedCV;
+      console.log("Input frame loaded with saved CV content");
+      
+      // Setup event listeners
+      doc.body.addEventListener('input', function() {
+        localStorage.setItem('savedCVContent', doc.body.innerHTML);
+      });
+      
+      doc.body.addEventListener('blur', function() {
+        if (doc.body.innerHTML.trim() === '' || doc.body.innerHTML === '<br>') {
+          doc.body.innerHTML = '<p class="placeholder">PASTE YOUR CV HERE</p>';
+        } else {
+          localStorage.setItem('savedCVContent', doc.body.innerHTML);
+        }
+      });
+    }
+  } else {
+    // No saved content, use the existing setup
+    setupFrame(inputFrame, "PASTE YOUR CV HERE");
+    
+    const doc = inputFrame.contentDocument;
+    if (doc) {
+      // Make sure designMode is enabled directly
+      doc.designMode = 'on';
+      console.log("Input frame loaded, designMode:", doc.designMode);
+      
+      // Add click handler to clear placeholder
+      doc.body.addEventListener('click', function() {
+        if (doc.body.innerHTML.includes('class="placeholder"')) {
+          doc.body.innerHTML = '';
+        }
+      });
+      
+      // Add focus handler as backup for click
+      doc.body.addEventListener('focus', function() {
+        if (doc.body.innerHTML.includes('class="placeholder"')) {
+          doc.body.innerHTML = '';
+        }
+      });
+      
+      // Restore placeholder if empty on blur and save content otherwise
+      doc.body.addEventListener('blur', function() {
+        if (doc.body.innerHTML.trim() === '' || doc.body.innerHTML === '<br>') {
+          doc.body.innerHTML = '<p class="placeholder">PASTE YOUR CV HERE</p>';
+        } else {
+          localStorage.setItem('savedCVContent', doc.body.innerHTML);
+        }
+      });
+      
+      // Save content on input
+      doc.body.addEventListener('input', function() {
+        if (!doc.body.innerHTML.includes('class="placeholder"')) {
+          localStorage.setItem('savedCVContent', doc.body.innerHTML);
+        }
+      });
+    }
+  }
+};
+
+// Replace the outputFrame initialization code as well
+const outputFrame = document.getElementById("cvOutputFrame");
+outputFrame.srcdoc = "<html><body></body></html>";
+outputFrame.onload = () => {
+  setupFrame(outputFrame, "REFINED CV WILL APPEAR HERE (typically within 2-3 minutes).<br>You will see the changes made in your CV in the Changes section below");
+};
+
+  // Spinner functions
+  function showSpinner() {
+    document.getElementById("spinner").style.display = "block";
+  }
+  function hideSpinner() {
+    document.getElementById("spinner").style.display = "none";
+  }
+
+  // CONTINUE WITH THE UPDATED startRefinement FUNCTION
+    window.startRefinement = function() {
+    showSpinner();
+    showStatus("Optimizing your CV... please wait.");
+    
+    const jobUrl = document.getElementById("jobUrlInput").value.trim();
+    const inputDoc = inputFrame.contentDocument;
+    
+    if (!inputDoc) {
+      showStatus("Error: Could not access the CV input frame.", "error");
+      hideSpinner();
+      return;
+    }
+    
+    // Normalize input CV before sending
+    let cvHTML = normalizeCV(inputDoc.body.innerHTML);
+    
+    if (!jobUrl || !cvHTML) {
+      showStatus("Error: Please provide both a job URL and your CV HTML.", "error");
+      hideSpinner();
+      return;
+    }
+    
+    const refinementLevel = document.getElementById("refineStrength").value;
+
+    // Add this logging for debugging
+    console.log(`Using refinement level: ${refinementLevel}`);
+
+    // Add the user's full message to the conversation
+    conversation.push({
+      role: "user",
+      content: `
+        Here is my CV in HTML:
+        """${cvHTML}"""
+
+        Job URL: ${jobUrl}
+
+        Please refine this CV to be perfect for the job.
+        Refinement Level: ${refinementLevel}
+
+        IMPORTANT:
+        - You already have my CV from previous messages—do NOT ask for it again.
+        - **Preserve the original formatting exactly.** This includes:
+          - All original headings (e.g., INTRO, EDUCATION, PROFESSIONAL EXPERIENCE).
+          - The same bullet points, indentation, and spacing. Each bullet point must be directly attached to its corresponding text.
+        - Do NOT add extra blank rows or additional spaces.
+        - Return the FULL updated CV in HTML with no extra commentary.
+        `
+    });
+
+    // Send to server for refinement
+    fetch("/refine", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ conversation, jobUrl, cvHTML, refinementLevel }),
+    })
+    .then((response) => response.json())
+    .then((data) => {
+      hideSpinner();
+      let refinedHTML = data.refinedHTML || "";
+      
+      // Normalize the refined CV
+      refinedHTML = normalizeCV(refinedHTML);
+      
+      const outDoc = outputFrame.contentDocument;
+      if (!outDoc) {
+        showStatus("Error: Could not access the output frame.", "error");
+        return;
+      }
+      
+      // Update the output frame with normalized content
+      outDoc.body.innerHTML = refinedHTML;
+      
+      // Handle changes display
+      if (data.changes) {
+        const changesContainer = document.getElementById("changes");
+        const changesContent = document.createElement('div');
+        changesContent.className = 'changes-content';
+        changesContent.innerHTML = data.changes;
+        
+        changesContainer.innerHTML = '<h3>Changes Made</h3>';
+        changesContainer.appendChild(changesContent);
+        
+        const legend = document.createElement('div');
+        legend.style.marginTop = '1rem';
+        legend.style.fontSize = '0.9rem';
+        legend.innerHTML = `
+          <span class="diff-added">Green text</span> = Added content<br>
+          <span class="diff-removed">Red text</span> = Removed content
+        `;
+        changesContainer.appendChild(legend);
+      } else {
+        document.getElementById("changes").innerHTML = 
+          "<h3>Changes Made</h3><p>No changes data available.</p>";
+      }
+      
+      showStatus("CV refined successfully!", "success");
+    })
+    .catch((err) => {
+      console.error(err);
+      showStatus("Error: " + err.message, "error");
+      hideSpinner();
+    });
+  };
+</script>
+
+<script nonce="<%= nonce %>">
+  // Check if scripts are loaded
+  document.addEventListener('DOMContentLoaded', function() {
+    const scripts = document.querySelectorAll('script');
+    console.log('Total scripts loaded:', scripts.length);
+    
+    // Check if checkout.js was loaded
+    const checkoutScript = Array.from(scripts).find(script => 
+      script.src && script.src.includes('checkout.js'));
+    console.log('Checkout script loaded:', !!checkoutScript);
+    
+    // Check if LemonSqueezy is available
+    console.log('LemonSqueezy object available:', !!window.LemonSqueezy);
+    console.log('createLemonSqueezy function available:', !!window.createLemonSqueezy);
+  });
+</script>
+
+<!-- Add this script section at the end of your body tag in index.ejs -->
+<script nonce="<%= nonce %>">
+  // Ensure LemonSqueezy is properly initialized and events are captured
+  document.addEventListener('DOMContentLoaded', function() {
+    // Check if Lemon Squeezy script was loaded
+    console.log('Checking Lemon Squeezy script status...');
+    
+    // Wait for Lemon Squeezy to be ready
+    function waitForLemonSqueezy(maxWait = 5000) {
+      return new Promise((resolve) => {
+        // If already available, resolve immediately
+        if (window.LemonSqueezy) {
+          console.log('LemonSqueezy already available');
+          return resolve(true);
+        }
+        
+        // Set a timeout for max wait
+        const timeout = setTimeout(() => {
+          console.warn('LemonSqueezy not available after timeout');
+          resolve(false);
+        }, maxWait);
+        
+        // Check every 100ms
+        const interval = setInterval(() => {
+          if (window.LemonSqueezy) {
+            clearInterval(interval);
+            clearTimeout(timeout);
+            console.log('LemonSqueezy became available');
+            resolve(true);
+          }
+        }, 100);
+      });
+    }
+    
+    // Function to set up global event listener
+    function setupGlobalEventListener() {
+      
+      // Global event listener to catch all potential payment events
+      window.addEventListener('message', function(event) {
+        // console.log("📡 Global message event received:", event.data);
+        
+        // Handle string-based events (our custom events)
+        if (typeof event.data === 'string') {
+          if (event.data === 'checkout-completed' || event.data.includes('success')) {
+            console.log('✅ PAYMENT SUCCESS detected via message event');
+            document.getElementById('result-message').innerHTML = '✅ Payment successful! Processing your request...';
+            checkoutButton.disabled = false;
+            
+            // Trigger refinement process
+            if (typeof window.startRefinement === 'function') {
+              console.log('Starting refinement process');
+              window.startRefinement();
+            } else {
+              console.error('startRefinement function not available');
+            }
+          } else if (event.data === 'checkout-closed' || event.data.includes('closed')) {
+            console.log('❌ CHECKOUT CLOSED detected via message event');
+            document.getElementById('result-message').innerHTML = 'Checkout cancelled. Click to try again.';
+            document.getElementById('checkout-button').disabled = false;
+            document.getElementById('checkout-button').textContent = 'Optimize Me!';
+          }
+        }
+        
+        // Handle object-based events (Lemon Squeezy events)
+        if (event.data && event.data.event) {
+          if (event.data.event === 'checkout:success') {
+            console.log('✅ PAYMENT SUCCESS detected via Lemon Squeezy event');
+            document.getElementById('result-message').innerHTML = '✅ Payment successful! Processing your request...';
+            
+            // Trigger refinement process
+            if (typeof window.startRefinement === 'function') {
+              window.startRefinement();
+            }
+          }
+        }
+      }, false);
+    }
+    
+    // Initialize everything
+    async function initializeCheckout() {
+      setupGlobalEventListener();
+      
+      // Wait for LemonSqueezy to be available (max 5 seconds)
+      const lemonSqueezyAvailable = await waitForLemonSqueezy(5000);
+      
+      if (lemonSqueezyAvailable) {
+        console.log('Setting up LemonSqueezy...');
+        window.LemonSqueezy.Setup({
+          eventHandler: function(event) {
+            console.log('Direct LemonSqueezy event:', event);
+            
+            if (event.event === 'checkout:success') {
+              console.log('✅ PAYMENT SUCCESS via direct handler');
+              document.getElementById('result-message').innerHTML = '✅ Payment successful! Processing your request...';
+              
+              // Start a fallback polling to check payment status
+              let pollAttempts = 0;
+              const maxPollAttempts = 5;
+              
+              const statusPoll = setInterval(async () => {
+                try {
+                  const response = await fetch('/api/check-order-status');
+                  const data = await response.json();
+                  
+                  if (data.status === 'paid') {
+                    clearInterval(statusPoll);
+                    if (typeof window.startRefinement === 'function') {
+                      window.startRefinement();
+                    }
+                    return;
+                  }
+                  
+                  pollAttempts++;
+                  if (pollAttempts >= maxPollAttempts) {
+                    clearInterval(statusPoll);
+                  }
+                } catch (error) {
+                  console.error('Error polling status:', error);
+                  pollAttempts++;
+                  if (pollAttempts >= maxPollAttempts) {
+                    clearInterval(statusPoll);
+                  }
+                }
+              }, 2000);
+            }
+          }
+        });
+      } else {
+        console.warn('LemonSqueezy not available, setting up backup polling');
+        
+        // Set up a backup polling mechanism in case LemonSqueezy events don't fire
+        const checkoutButton = document.getElementById('checkout-button');
+        if (checkoutButton) {
+          checkoutButton.addEventListener('click', function() {
+            setTimeout(() => {
+              console.log('Setting up backup payment status polling');
+              // Poll for payment status every 3 seconds
+              let attempts = 0;
+              const maxAttempts = 20;
+              
+              const interval = setInterval(async () => {
+                try {
+                  console.log(`Backup polling attempt ${attempts + 1}/${maxAttempts}`);
+                  const response = await fetch('/api/check-order-status');
+                  const data = await response.json();
+                  
+                  if (data.status === 'paid') {
+                    clearInterval(interval);
+                    document.getElementById('result-message').innerHTML = '✅ Payment confirmed! Starting refinement...';
+                    if (typeof window.startRefinement === 'function') {
+                      window.startRefinement();
+                    }
+                    return;
+                  }
+                  
+                  attempts++;
+                  if (attempts >= maxAttempts) {
+                    clearInterval(interval);
+                  }
+                } catch (error) {
+                  console.error('Error in backup polling:', error);
+                  attempts++;
+                  if (attempts >= maxAttempts) {
+                    clearInterval(interval);
+                  }
+                }
+              }, 3000);
+            }, 10000); // Start polling 10 seconds after button click
+          }, { once: true }); // Only add this listener once
+        }
+      }
+    }
+    
+    // Start the initialization process
+    initializeCheckout();
+  });
+  </script>
+
+<script nonce="<%= nonce %>">
+// Auto-check for results when page loads 
+document.addEventListener('DOMContentLoaded', function() {
+  console.log("Setting up auto-refresh for results");
+  
+// Create a new endpoint to check refinement status
+async function checkRefinementStatus() {
+  try {
+    const jobId = localStorage.getItem('currentJobId');
+    
+    if (!jobId) {
+      console.log("No jobId found in localStorage, cannot check refinement status");
+      return false; // Early return if no jobId
+    }
+    
+    const response = await fetch('/api/refinement-status', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jobId })
+    });
+
+    const data = await response.json();
+    console.log("Refinement status check:", data);
+    
+    if (data.status === 'completed' && data.refinedHTML) {
+      console.log("✅ Refinement results found!");
+      
+      // Update the output frame with the refined CV
+      const outDoc = document.getElementById('cvOutputFrame').contentDocument;
+      if (outDoc) {
+        // Make sure we replace the entire body content
+        outDoc.body.innerHTML = normalizeCV(data.refinedHTML);  // <-- Add normalizeCV here
+        
+        // Update the changes display
+        if (data.changes) {
+          const changesContainer = document.getElementById("changes");
+          // Create structured content for better formatting
+          changesContainer.innerHTML = '<h3>Changes Made</h3>';
+          
+          const changesContent = document.createElement('div');
+          changesContent.className = 'changes-content';
+          changesContent.innerHTML = data.changes;
+          changesContainer.appendChild(changesContent);
+          
+          // Add a legend for clarity
+          const legend = document.createElement('div');
+          legend.style.marginTop = '1rem';
+          legend.style.fontSize = '0.9rem';
+          legend.innerHTML = `
+            <span class="diff-added">Green text</span> = Added content<br>
+            <span class="diff-removed">Red text</span> = Removed content
+          `;
+          changesContainer.appendChild(legend);
+        }
+        
+        // Show notification
+        showNotification('✅ CV refinement complete! Check the results.');
+        
+        // Reset message and buttons
+        document.getElementById('result-message').innerHTML = '';
+        
+        const checkoutButton = document.getElementById('checkout-button');
+        if (checkoutButton) {
+          checkoutButton.disabled = false;
+          checkoutButton.textContent = 'Optimize Me!';
+        }
+        
+        // Hide spinner
+        hideSpinner();
+        
+        return true;
+      }
+    }
+    
+    return false;
+  } catch (err) {
+    console.error("Error checking refinement status:", err);
+    return false;
+  }
+}
+  
+// Replace the monitorForResults function in index.ejs with this improved version
+window.monitorForResults = function() {
+  console.log("Starting result monitoring");
+  
+  // Reset the checkout completed flag to ensure we can monitor again
+  window.checkoutCompleted = false;
+  
+  let attempts = 0;
+  const maxAttempts = 30; // 30 attempts × 5 seconds = 2.5 minutes max wait
+  
+  // Show spinner when monitoring starts
+  showSpinner();
+  
+  // Get the current jobId from localStorage - should be the newest one
+  const jobId = localStorage.getItem('currentJobId');
+  if (!jobId) {
+    console.error("No jobId found in localStorage for monitoring");
+    document.getElementById('result-message').innerHTML = 'Error: Could not find job ID for monitoring';
+    hideSpinner();
+    return;
+  }
+  
+  console.log(`Starting monitoring for jobId: ${jobId}`);
+  
+  // Update message
+  document.getElementById('result-message').innerHTML = '⚙️ CV optimization in progress...';
+  
+  const checkInterval = setInterval(async () => {
+    attempts++;
+    console.log(`Checking for results (attempt ${attempts}/${maxAttempts})...`);
+    
+    try {
+      // Add timestamp to prevent caching
+      const timestamp = new Date().getTime();
+      const response = await fetch(`/api/refinement-status?t=${timestamp}`, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache'
+        },
+        body: JSON.stringify({ jobId })
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Failed to check refinement status: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      console.log("Result check response:", data);
+      
+      if (data.status === 'completed' && data.refinedHTML) {
+        console.log("✅ Results found, stopping interval");
+        clearInterval(checkInterval);
+        
+        // Update the output frame with the refined CV
+        const outDoc = document.getElementById('cvOutputFrame').contentDocument;
+        if (outDoc) {
+          // Normalize and display
+          outDoc.body.innerHTML = typeof normalizeCV === 'function' ? 
+            normalizeCV(data.refinedHTML) : data.refinedHTML;
+          
+          // Update the changes display
+          if (data.changes) {
+            const changesContainer = document.getElementById("changes");
+            changesContainer.innerHTML = '<h3>Changes Made</h3>';
+            const changesContent = document.createElement('div');
+            changesContent.className = 'changes-content';
+            changesContent.innerHTML = data.changes;
+            changesContainer.appendChild(changesContent);
+            const legend = document.createElement('div');
+            legend.style.marginTop = '1rem';
+            legend.style.fontSize = '0.9rem';
+            legend.innerHTML = `
+              <span class="diff-added">Green text</span> = Added content<br>
+              <span class="diff-removed">Red text</span> = Removed content
+            `;
+            changesContainer.appendChild(legend);
+          }
+          
+          // Show completion message
+          document.getElementById('result-message').innerHTML = '✅ CV refinement complete!';
+          
+          // Show notification
+          if (typeof showNotification === 'function') {
+            showNotification('✅ CV refinement complete! Check the results.');
+          }
+          
+          // Enable checkout button for next optimization
+          const checkoutButton = document.getElementById('checkout-button');
+          if (checkoutButton) {
+            checkoutButton.disabled = false;
+            checkoutButton.textContent = 'Optimize Me!';
+          }
+        }
+      } else if (attempts >= maxAttempts) {
+        console.log("❌ Max attempts reached, stopping interval");
+        clearInterval(checkInterval);
+        document.getElementById('result-message').innerHTML = 
+          'No results found. Please try again with a different job URL.';
+      }
+    } catch (error) {
+      console.error("Error in monitoring:", error);
+      if (attempts >= maxAttempts) {
+        clearInterval(checkInterval);
+      }
+    } finally {
+      // Hide spinner if we're done or reached max attempts
+      if (attempts >= maxAttempts) {
+        hideSpinner();
+      }
+    }
+  }, 5000); // Check every 5 seconds
+  
+  return checkInterval; // Return interval ID for potential cleanup
+};
+  
+  // Start monitoring on page load if the message suggests a checkout was started
+  const messageEl = document.getElementById('result-message');
+  if (messageEl && 
+     (messageEl.textContent.includes('checkout') || 
+      messageEl.textContent.includes('Preparing') || 
+      messageEl.textContent.includes('Opening'))) {
+    console.log("Page loaded with checkout in progress, starting monitoring");
+    monitorForResults();
+  }
+  
+  // Also watch for changes to the message element
+  const observer = new MutationObserver((mutations) => {
+    mutations.forEach((mutation) => {
+      if (mutation.type === 'childList' && 
+          messageEl.textContent.includes('Opening checkout')) {
+        if (!window.checkoutCompleted) {  // Use window.checkoutCompleted
+          window.checkoutCompleted = true;  // Use window.checkoutCompleted
+          console.log("Checkout opened, starting result monitoring");
+          monitorForResults();
+        }
+      }
+    });
+  });
+  
+  if (messageEl) {
+    observer.observe(messageEl, { childList: true });
+  }
+  
+  // Backup: check once on page load regardless of conditions
+  setTimeout(() => {
+    checkRefinementStatus()
+      .then(resultFound => {
+        if (resultFound) {
+          console.log("✅ Results found on initial check");
+        } else {
+          console.log("No results found on initial check");
+        }
+      })
+      .catch(err => console.error("Error in initial check:", err));
+  }, 2000);
+});
+</script>
+
+<!-- About Panel - Add this near the end of the body but before scripts -->
+<div id="about-overlay">
+  <div id="about-panel">
+    <div class="about-header">
+      <button id="close-about">&times;</button>
+    </div>
+    <div class="about-content">
+
+            <!-- Add this at the end of the .about-content div, before the closing </div> tag -->
+            <div class="about-video-container">
+              <video autoplay muted loop playsinline class="about-video">
+                <source src="/cvopt-demo.mp4" type="video/mp4">
+              </video>
+            </div>
+
+      <h1><span>Land Your Dream Job with an AI-Optimized Resume</span></h1>
+      <p><span>Unlock your career potential with our cutting-edge </span><b><strong>resume optimization</strong></b><span> service. Our </span><b><strong>AI CV optimizer</strong></b><span> crafts </span><b><strong>ATS-friendly resumes</strong></b><span> by analyzing job descriptions to effectively match and showcase your skills and experience. For just $1, elevate your job application with precision and personalization.</span></p>
+      <h2><span>Why Choose Our </span><span>Job Application Tools</span><span>?</span></h2>
+      <ul>
+        <li><b><strong>Resume Tailoring</strong></b><b><strong>:</strong></b><span> We customize your resume to align with specific job descriptions, ensuring your qualifications shine through.</span></li>
+        <li><b><strong>ATS-Friendly Resumes</strong></b><b><strong>:</strong></b><span> With our expertise, avoid the pitfalls of applicant tracking systems and get your resume seen by recruiters.</span></li>
+        <li><b><strong>AI-Powered Resume</strong></b><b><strong> Enhancements:</strong></b><span> Leverage advanced technology that positions you at the forefront of the hiring manager's mind.</span></li>
+      </ul>
+      <h2><span>Our </span><span>Online CV Service</span></h2>
+      <p><span>Experience the ease and effectiveness of our </span><b><strong>online CV service</strong></b><span>. Generate polished, professional profiles with our intuitive </span><b><strong>resume builder</strong></b><span> and </span><b><strong>CV enhancer</strong></b><span> that amplify your job prospects effortlessly.</span></p>
+      <h2><span>Get Started Today for Only $1</span></h2>
+      <p><span>Take advantage of our unbeatable offer to </span><b><strong>optimize your CV</strong></b><span> for only $1. Witness the immediate impact of our </span><b><strong>AI-powered resume</strong></b><span> enhancements. </b><span> to transform your job application success rate.</span></p>
+
+
+        <!-- Add this CSS to the existing <style> section in your document head 
+        <style>
+          .about-video-container {
+            width: 100%;
+            margin: 1.5rem 0;
+            border-radius: var(--radius);
+            overflow: hidden;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+          }
+          
+          .about-video {
+            width: 100%;
+            display: block;
+          }
+        </style>
+        -->
+    
+    </div>
+  </div>
+</div>
+
+</body>
+</html>
