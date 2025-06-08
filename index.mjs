@@ -26,48 +26,15 @@ dotenv.config();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Read SSL certificates
-// HTTPS/HTTP Server Setup
-let server;
-let protocolUsed = 'http';
+// -----------------------
+// Initialize Express app
+// -----------------------
 
-try {
-  if (process.env.NODE_ENV === 'production') {
-    console.log('Starting in PRODUCTION mode with HTTP');
-    server = http.createServer(app);
-  } else {
-    try {
-      const __dirname = path.dirname(fileURLToPath(import.meta.url));
-      const options = {
-        key: fs.readFileSync(path.join(__dirname, 'certificates', 'localhost-key.pem')),
-        cert: fs.readFileSync(path.join(__dirname, 'certificates', 'localhost.pem'))
-      };
-      console.log('Starting in DEVELOPMENT mode with HTTPS');
-      server = https.createServer(options, app);
-      protocolUsed = 'https';
-    } catch (certError) {
-      console.error('Failed to load SSL certificates:', certError.message);
-      console.log('Falling back to HTTP for development');
-      server = http.createServer(app);
-      protocolUsed = 'http';
-    }
-  }
+const app = express();
 
-  server.listen(PORT, HOST, () => {
-    console.log(`Server running at ${protocolUsed}://${HOST}:${PORT}`);
-  });
+const PORT = process.env.PORT || 8080;
+const HOST = process.env.NODE_ENV === 'production' && process.env.HTTPS === 'false' ? '0.0.0.0' : 'localhost';
 
-  server.on('error', (error) => {
-    console.error('Server error:', error.message);
-    if (error.code === 'EADDRINUSE') {
-      console.error(`Port ${PORT} is already in use. Choose a different port.`);
-    }
-    process.exit(1);
-  });
-} catch (startupError) {
-  console.error('Fatal error during server startup:', startupError.message);
-  process.exit(1);
-}
 
 // -------------------------------------------------------------------
 // Logger setup with Winston
@@ -89,18 +56,10 @@ logger.info('Application started - Enhanced Logging');
 logger.info(`Current directory: ${__dirname}`);
 logger.info(`Views directory: ${path.join(__dirname, 'views')}`);
 
-// -----------------------
-// Initialize Express app
-// -----------------------
-
-const app = express();
-
-const PORT = process.env.PORT || 8080;
-const HOST = process.env.NODE_ENV === 'production' && process.env.HTTPS === 'false' ? '0.0.0.0' : 'localhost';
-
-//
-// HTTPS/HTTP
-//
+// Read SSL certificates
+// HTTPS/HTTP Server Setup
+let server;
+let protocolUsed = 'http';
 
 try {
   if (process.env.NODE_ENV === 'production') {
@@ -108,10 +67,9 @@ try {
     server = http.createServer(app);
   } else {
     try {
-      const __dirname = path.dirname(fileURLToPath(import.meta.url));
       const options = {
-        key: fs.readFileSync(path.join(__dirname, 'ssl', 'key.pem')),
-        cert: fs.readFileSync(path.join(__dirname, 'ssl', 'cert.pem'))
+        key: fs.readFileSync(path.join(__dirname, 'certificates', 'localhost-key.pem')),
+        cert: fs.readFileSync(path.join(__dirname, 'certificates', 'localhost.pem'))
       };
       console.log('Starting in DEVELOPMENT mode with HTTPS');
       server = https.createServer(options, app);
@@ -440,14 +398,6 @@ app.use(express.static(path.join(__dirname, 'public'), {
     }
   }
 }));
-
-// Initialize the server first
-const startServer = new Promise((resolve) => {
-  server.listen(PORT, () => {
-    logger.info(`Server running at ${protocolUsed}://${HOST}:${PORT}`);
-    resolve();
-  });
-});
 
 // -------------------------------------------------------------------
 // API Routes Group
