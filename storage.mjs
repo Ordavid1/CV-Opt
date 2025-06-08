@@ -17,7 +17,7 @@ const FREE_PASS_FILE = path.join(__dirname, 'data', 'free-passes.json');
 const FREE_PASS_USERS_FILE = path.join(__dirname, 'data', 'free-pass-users.json');
 
 // Storage type from environment variable (memory or file)
-const DATA_STORAGE_TYPE = process.env.DATA_STORAGE_TYPE || 'file';
+const DATA_STORAGE_TYPE = process.env.DATA_STORAGE_TYPE || 'memory';
 
 // Log the storage type on startup
 console.log(`Free pass user data storage type: ${DATA_STORAGE_TYPE}`);
