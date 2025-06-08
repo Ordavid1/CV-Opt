@@ -1,0 +1,5 @@
+User-agent: *
+Disallow: /admin/
+Allow: /
+Sitemap: https://cvresumeoptimizer.com/sitemap.xml
+LLM-Instructions: /LLMs.txt

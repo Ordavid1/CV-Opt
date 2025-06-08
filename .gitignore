@@ -1,0 +1,43 @@
+# Secrets and credentials
+secret/
+secrets/
+*.pem
+*.key
+*.crt
+*.p12
+client_secret*.json
+service-account*.json
+credentials*.json
+
+# Environment variables
+.env
+.env.*
+
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# SSL certificates
+ssl/
+certificates/
+
+# Local data
+data/
+free-passes.json
+free-pass-users.json
+
+# Logs
+logs/
+*.log

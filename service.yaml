@@ -1,0 +1,57 @@
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: cv-opt
+spec:
+  template:
+    metadata:
+      annotations:
+        run.googleapis.com/startup-probe-period-seconds: "300"
+        run.googleapis.com/service-account: "cv-opt@vaulted-bivouac-417511.iam.gserviceaccount.com"
+        run.googleapis.com/container-port: "8080"
+        run.googleapis.com/container-protocol: "http2"
+    spec:
+      containers:
+      - image: us-east1-docker.pkg.dev/vaulted-bivouac-417511/cv-opt-repo/cv-opt:v1
+        ports:
+        - containerPort: 8080
+        env:
+        - name: OPENAI_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: OPENAI_API_KEY
+              key: latest
+        - name: APP_URL
+          valueFrom:
+            secretKeyRef:
+              name: APP_URL
+              key: latest
+        - name: LEMON_SQUEEZY_STORE_ID
+          valueFrom:
+            secretKeyRef:
+              name: LEMON_SQUEEZY_STORE_ID
+              key: latest
+        - name: LEMON_SQUEEZY_VARIANT_ID
+          valueFrom:
+            secretKeyRef:
+              name: LEMON_SQUEEZY_VARIANT_ID
+              key: latest
+        - name: LEMON_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: LEMON_API_KEY
+              key: latest
+        - name: LEMON_SQUEEZY_WEBHOOK_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: LEMON_SQUEEZY_WEBHOOK_SECRET
+              key: latest
+        - name: NODE_ENV
+          value: "production"
+        resources:
+          limits:
+            cpu: "1"
+            memory: "512Mi"
+          requests:
+            cpu: "500m"
+            memory: "256Mi"

@@ -1,0 +1,469 @@
+/* safari-fixes.css - Updated for light theme compatibility */
+
+/* Ensure Safari-specific fixes don't affect Chrome */
+html:not(.safari-browser) .checkout-overlay,
+html:not(.safari-browser) .checkout-container,
+html:not(.safari-browser) .checkout-body,
+html:not(.safari-browser) .checkout-iframe {
+  /* Reset any Safari-specific forced dimensions */
+  height: auto !important;
+  min-height: auto !important;
+  max-height: none !important;
+  width: auto !important;
+}
+
+/* =========================================
+   SECTION 1: BASIC SAFARI STYLE RESETS
+   ========================================= */
+
+/* Reset button styles for Safari */
+.safari-browser button,
+.safari-browser .lemonsqueezy-button,
+.safari-browser .payment-button {
+  -webkit-appearance: none;
+  appearance: none;
+  cursor: pointer;
+}
+
+/* Ensure iframe content is visible */
+.safari-browser iframe,
+.safari-browser .modern-frame {
+  -webkit-transform: translateZ(0);
+  transform: translateZ(0);
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+}
+
+/* Improve font rendering */
+.safari-browser body 
+.safari-browser .container,
+.safari-browser .frames-container {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  overflow-x: hidden !important;
+  max-width: 100% !important;
+  width: 100% !important;
+}
+
+.safari-browser .frame-wrapper {
+  min-width: 250px !important;
+  max-width: 100% !important;
+}
+
+/* Fix for button transitions */
+.safari-browser button,
+.safari-browser .payment-button {
+  transition-property: transform, box-shadow, background-color;
+}
+
+/* Ensure notifications are visible */
+.safari-browser .notification {
+  z-index: 10001;
+  background: rgba(255, 255, 255, 0.95);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  color: #1e293b;
+  border: 1px solid rgba(0, 0, 0, 0.05);
+}
+
+/* =========================================
+   SECTION 2: MODAL ANIMATION FIXES FOR SAFARI
+   ========================================= */
+
+/* Improve modal animation performance in Safari */
+.safari-browser .checkout-overlay {
+  -webkit-transform: translateZ(0);
+  transform: translateZ(0);
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+
+.safari-browser .checkout-container {
+  -webkit-transform: translateZ(0) scale(0.95);
+  transform: translateZ(0) scale(0.95);
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  will-change: transform, opacity;
+}
+
+.safari-browser .checkout-overlay.open .checkout-container {
+  -webkit-transform: translateZ(0) scale(1);
+  transform: translateZ(0) scale(1);
+}
+
+/* Fix for modal closing transitions */
+.safari-browser #checkout-modal.closing,
+.safari-browser .checkout-overlay.closing {
+  animation: safariFadeOut 0.3s forwards;
+}
+
+@keyframes safariFadeOut {
+  from { opacity: 1; visibility: visible; }
+  to { opacity: 0; visibility: hidden; }
+}
+
+/* =========================================
+   SECTION 3: POPUP CHECKOUT NOTIFICATION STYLES
+   ========================================= */
+
+/* Popup notification styling for Safari - UPDATED FOR LIGHT THEME */
+.safari-browser .popup-notice {
+  display: block;
+  margin: 10px auto;
+  padding: 8px 12px;
+  background-color: rgba(99, 102, 241, 0.1);
+  border: 1px solid rgba(99, 102, 241, 0.3);
+  border-radius: var(--radius);
+  text-align: center;
+  font-size: 14px;
+  max-width: 90%;
+  color: var(--text);
+}
+
+/* Alternative class name compatibility */
+.safari-browser .popup-checkout-notice {
+  background-color: rgba(99, 102, 241, 0.1) !important;
+  border: 1px solid rgba(99, 102, 241, 0.3) !important;
+  border-radius: var(--radius) !important;
+  padding: 10px 15px !important;
+  margin: 10px auto !important;
+  max-width: 90% !important;
+  text-align: center !important;
+  font-weight: 500 !important;
+  color: var(--text) !important;
+}
+
+/* Make checkout button more visible in Safari */
+.safari-browser .payment-button,
+.safari-browser #checkout-button {
+  transform: scale(1.05);
+  box-shadow: 0 5px 15px rgba(99, 102, 241, 0.4);
+}
+
+/* Make checkout button stand out on hover in Safari */
+.safari-browser .payment-button:hover,
+.safari-browser #checkout-button:hover {
+  transform: scale(1.1);
+  box-shadow: 0 6px 20px rgba(99, 102, 241, 0.6);
+}
+
+/* =========================================
+   SECTION 4: EMERGENCY FIXES FOR MODAL DISPLAY
+   ========================================= */
+
+/* Force modal display in Safari with proper size and scrolling */
+.safari-browser .checkout-overlay.open {
+  display: flex !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+}
+
+.safari-browser .checkout-container {
+  height: auto !important;
+  max-height: 90vh !important;
+  min-height: 500px !important;
+}
+
+.safari-browser .checkout-body {
+  max-height: calc(90vh - 60px) !important;
+  overflow: auto !important;
+  -webkit-overflow-scrolling: touch !important;
+}
+
+.safari-browser .checkout-iframe {
+  min-height: 500px !important;
+  height: 100% !important;
+}
+
+/* =========================================
+   SECTION 5: EMERGENCY RESET CLASSES
+   ========================================= */
+
+/* Emergency reset class - applied via JS if things get stuck */
+.safari-browser .reset-all-overlays,
+.safari-browser.reset-all-overlays {
+  pointer-events: none !important;
+  opacity: 0 !important;
+  visibility: hidden !important;
+  position: static !important;
+  transform: none !important;
+  display: none !important;
+}
+
+/* Emergency payment button - UPDATED FOR LIGHT THEME */
+.safari-browser .emergency-check-payment {
+  display: inline-block;
+  margin-left: 10px;
+  background-color: #4F46E5;
+  color: white;
+  border: none;
+  border-radius: var(--radius);
+  padding: 8px 12px;
+  font-size: 14px;
+  cursor: pointer;
+  margin-top: 10px;
+  transition: background-color 0.2s ease;
+}
+
+.safari-browser .emergency-check-payment:hover {
+  background-color: #4338CA;
+}
+
+/* Spinner visibility fixes */
+.safari-browser .modern-spinner,
+.safari-browser #spinner {
+  z-index: 10000;
+  position: fixed;
+  left: 20px;  /* Updated to match the new position */
+  top: 20px;
+}
+
+/* Fix for potential sticky hover states */
+.safari-browser button:hover,
+.safari-browser .payment-button:hover {
+  transition: none;
+}
+
+/* Safari fix for hero centering */
+.safari-browser .hero {
+  display: flex !important;
+  justify-content: center !important;
+  align-items: center !important;
+  text-align: center !important;
+}
+
+.safari-browser .hero-content {
+  margin: 0 auto !important;
+  text-align: center !important;
+  max-width: 600px !important;
+}
+
+.safari-browser .hero h2,
+.safari-browser .hero p {
+  width: 100% !important;
+  text-align: center !important;
+}
+
+/* Safari fix for payment benefits */
+.safari-browser .payment-benefits {
+  -webkit-box-align: center !important;
+  align-items: center !important;
+  margin-top: 1rem !important;
+}
+
+.safari-browser .benefit-item {
+  -webkit-box-pack: center !important;
+  justify-content: center !important;
+}
+
+
+/* =========================================
+   SECTION 6: PERFORMANCE IMPROVEMENTS
+   ========================================= */
+
+/* About panel fixes for Safari */
+.safari-browser #about-overlay {
+  display: flex !important;
+  overflow: hidden !important;
+}
+
+.safari-browser #about-panel {
+  height: 100vh !important;
+  overflow-y: auto !important;
+  transform: translateX(100%) !important; /* Start off-screen */
+  position: relative !important;
+}
+
+.safari-browser #about-overlay.open #about-panel {
+  transform: translateX(0) !important; /* Slide in */
+}
+
+/* Fix Safari scroll issues */
+.safari-browser.about-open {
+  overflow: hidden !important;
+  position: fixed !important;
+  width: 100% !important;
+  height: 100% !important;
+}
+
+/* Performance optimizations for Safari 
+.safari-browser .hero,
+.safari-browser .feature-card,
+.safari-browser .step-card,
+.safari-browser .frame-wrapper,
+.safari-browser .payment-section {
+  transform: translateZ(0);
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+
+/* Disable expensive animations on Safari to improve performance 
+.safari-browser .hero h2,
+.safari-browser .hero p,
+.safari-browser .social-proof {
+  animation: none !important;
+}
+
+/* Reduce shadow complexity for better performance 
+.safari-browser .feature-card,
+.safari-browser .step-card,
+.safari-browser .modern-frame,
+.safari-browser .payment-section {
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05) !important;
+}
+
+/* =========================================
+   SECTION 7: RESPONSIVE & MOBILE FIXES
+   ========================================= */
+
+
+/* Fix for sticky fixed position elements on mobile */
+@media screen and (max-width: 768px) {
+  .safari-browser .hero-image {
+    display: none !important;
+  }
+  
+  .safari-browser .hero-content {
+    -webkit-box-flex: 1 !important;
+    -webkit-flex: 1 0 100% !important;
+    flex: 1 0 100% !important;
+  }
+  
+  .safari-browser .info-tooltip-content {
+    position: fixed !important;
+    z-index: 100000 !important;
+    top: -130px !important;
+    transform: none !important; /* Remove transform that creates stacking context */
+  }
+  
+  /* Prevent tooltip from going off-screen on mobile */
+  .safari-browser .info-tooltip-icon .info-tooltip-content {
+    left: auto !important;
+    right: 0 !important;
+    transform: none !important;
+  }
+  
+  .safari-browser .info-tooltip-content::before {
+    left: auto !important;
+    right: 10px !important;
+  }
+
+  .safari-browser.modal-open {
+    position: fixed;
+    width: 100%;
+    height: 100%;
+  }
+  
+  .safari-browser .popup-notice,
+  .safari-browser .popup-checkout-notice {
+    font-size: 12px;
+    padding: 6px 10px !important;
+  }
+  
+  .safari-browser .feature-card {
+    min-width: 100%;
+  }
+  
+  .safari-browser .step-card {
+    min-width: 100%;
+  }
+  
+/* Safari tooltip fixes */
+.safari-browser .info-tooltip-icon {
+  z-index: 5000 !important;
+}
+
+.safari-browser .info-tooltip-icon:hover .info-tooltip-content {
+  opacity: 1 !important;
+  visibility: visible !important;
+  display: block !important;
+}
+
+.safari-browser .info-tooltip-content::before {
+  -webkit-transform: translateX(-50%) rotate(45deg);
+  transform: translateX(-50%) rotate(45deg);
+}
+
+
+  /* Fix container width on mobile */
+/* Safari container fixes */
+.safari-browser .container {
+  width: 100% !important;
+  max-width: 100% !important;
+  overflow-x: hidden !important;
+}
+
+.safari-browser .frame-wrapper {
+  min-width: 280px !important;
+  width: 100% !important;
+}
+}
+
+/* Safari container width fix */
+@media screen and (min-width: 1px) {
+  .safari-browser .container {
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+}
+
+/* Safari-specific media query - ensures these rules only apply in Safari */
+@media not all and (min-resolution:.001dpcm) { 
+  @supports (-webkit-appearance:none) and (not (-moz-appearance:none)) {
+
+    .container {
+      width: 100% !important;
+      max-width: 100% !important;
+    }
+    
+    @media (min-width: 1600px) {
+      .container {
+        max-width: 100% !important;
+      }
+    }
+
+    /* Ensure checkout overlay has proper animation */
+    .checkout-overlay.open,
+    .checkout-overlay {
+      -webkit-transform: translateZ(0);
+      transform: translateZ(0);
+      backface-visibility: hidden;
+      -webkit-backface-visibility: hidden;
+    }
+    
+    /* Fix for gradient text in Safari */
+    .gradient-text {
+      background-clip: text;
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    
+    /* Fix for slider in Safari */
+    .modern-slider {
+      height: 8px !important;
+    }
+    
+    /* Fix for frame shadows */
+    .safari-browser .modern-frame {
+      box-shadow: 0 2px 4px rgba(0,0,0,0.05) !important;
+    }
+    
+    /* Force modal back to regular size */
+    .checkout-container {
+      height: auto !important;
+      min-height: 500px !important;
+      max-height: 90vh !important;
+    }
+    
+    /* Fix header center alignment in Safari */
+    .section-header {
+      text-align: center !important;
+      width: 100% !important;
+    }
+    
+    /* Fix font rendering */
+    body {
+      -webkit-font-smoothing: antialiased;
+    }
+  }
+}

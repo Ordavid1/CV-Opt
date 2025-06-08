@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Free CV Optimization</title>
+    <style>
+        :root {
+            --primary: #4f46e5;
+            --primary-light: #6366f1;
+            --secondary: #9333ea;
+            --text: #1e293b;
+            --text-secondary: #64748b;
+            --border: rgba(0, 0, 0, 0.1);
+            --radius: 8px;
+        }
+        
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Poppins', Arial, sans-serif;
+        }
+        
+        body {
+            background-color: #fff;
+            color: var(--text);
+            padding: 20px;
+            max-width: 450px;
+            margin: 0 auto;
+        }
+        
+        .form-header {
+            text-align: center;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 1px solid var(--border);
+        }
+        
+        .form-header h1 {
+            font-size: 22px;
+            color: var(--primary);
+            margin-bottom: 5px;
+        }
+        
+        .form-header p {
+            font-size: 14px;
+            color: var(--text-secondary);
+        }
+        
+        .free-badge {
+            background: linear-gradient(135deg, #f59e0b, #ea580c);
+            color: white;
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 13px;
+            font-weight: bold;
+            display: inline-block;
+            margin-bottom: 10px;
+        }
+        
+        .form-group {
+            margin-bottom: 15px;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 500;
+            font-size: 14px;
+        }
+        
+        input {
+            width: 100%;
+            padding: 10px 12px;
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            font-size: 15px;
+            transition: border-color 0.3s;
+        }
+        
+        input:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2);
+        }
+        
+        input.error {
+            border-color: #ef4444;
+        }
+        
+        .error-message {
+            color: #ef4444;
+            font-size: 12px;
+            margin-top: 3px;
+            display: none;
+        }
+        
+        .button-container {
+            margin-top: 25px;
+            text-align: center;
+        }
+        
+        #continue-button {
+            background-image: linear-gradient(to right, var(--primary), var(--secondary));
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 25px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            width: 100%;
+            max-width: 250px;
+            opacity: 0.6;
+            pointer-events: none;
+        }
+        
+        #continue-button.enabled {
+            opacity: 1;
+            pointer-events: auto;
+        }
+        
+        #continue-button.enabled:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(99, 102, 241, 0.4);
+        }
+        
+        .terms {
+            margin-top: 15px;
+            font-size: 12px;
+            color: var(--text-secondary);
+            text-align: center;
+        }
+        
+        .terms a {
+            color: var(--primary);
+            text-decoration: none;
+        }
+        
+        .terms a:hover {
+            text-decoration: underline;
+        }
+        
+        .loading {
+            display: none;
+            text-align: center;
+            margin-top: 20px;
+        }
+        
+        .spinner {
+            width: 40px;
+            height: 40px;
+            margin: 0 auto 10px;
+            border: 4px solid rgba(99, 102, 241, 0.1);
+            border-left-color: var(--primary);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="form-header">
+        <span class="free-badge">FREE PASS</span>
+        <h1>Almost there!</h1>
+        <p>Please provide your information to continue with your free CV optimization</p>
+    </div>
+    
+    <form id="free-pass-form">
+        <div class="form-group">
+            <label for="firstName">First Name</label>
+            <input type="text" id="firstName" name="firstName" required>
+            <div class="error-message">Please enter your first name</div>
+        </div>
+        
+        <div class="form-group">
+            <label for="lastName">Last Name</label>
+            <input type="text" id="lastName" name="lastName" required>
+            <div class="error-message">Please enter your last name</div>
+        </div>
+        
+        <div class="form-group">
+            <label for="email">Email Address</label>
+            <input type="email" id="email" name="email" required>
+            <div class="error-message">Please enter a valid email address</div>
+        </div>
+        
+        <div class="button-container">
+            <button type="submit" id="continue-button">Continue</button>
+        </div>
+        
+        <div class="terms">
+            By continuing, you agree to our <a href="/terms-of-use.html" target="_blank">Terms of Use</a> and 
+            <a href="/privacy-policy.html" target="_blank">Privacy Policy</a>
+        </div>
+    </form>
+    
+    <div class="loading" id="loading">
+        <div class="spinner"></div>
+        <p>Processing your CV...</p>
+    </div>
+    
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Extract URL parameters
+            const urlParams = new URLSearchParams(window.location.search);
+            const jobId = urlParams.get('jobId');
+            
+            if (!jobId) {
+                alert('Error: Missing job ID');
+                return;
+            }
+            
+            // Form validation
+            const form = document.getElementById('free-pass-form');
+            const continueButton = document.getElementById('continue-button');
+            const inputs = form.querySelectorAll('input[required]');
+            const loading = document.getElementById('loading');
+            
+            // Add this function before validateForm
+            function validateEmail(email) {
+            // More comprehensive email validation
+            const emailRegex = /^(([^<>()[\]\\.,;:\s@"]+(\.[^<>()[\]\\.,;:\s@"]+)*)|(".+"))@((\[[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\])|(([a-zA-Z\-0-9]+\.)+[a-zA-Z]{2,}))$/;
+            return emailRegex.test(String(email).toLowerCase());
+            }
+
+            // Function to check if all fields are valid
+            function validateForm() {
+            let valid = true;
+            
+            inputs.forEach(input => {
+                // Clear previous errors
+                input.classList.remove('error');
+                const errorDiv = input.nextElementSibling;
+                errorDiv.style.display = 'none';
+                
+                if (!input.value.trim()) {
+                    valid = false;
+                    input.classList.add('error');
+                    errorDiv.style.display = 'block';
+                } else if (input.type === 'email') {
+                    // ONLY THIS PART CHANGES - use the new validateEmail function
+                    if (!validateEmail(input.value.trim())) {
+                        valid = false;
+                        input.classList.add('error');
+                        errorDiv.style.display = 'block';
+                    }
+                }
+            });
+            
+            return valid;
+        }
+            
+            // Check form validity on input changes
+            inputs.forEach(input => {
+                input.addEventListener('input', function() {
+                    const isValid = validateForm();
+                    
+                    if (isValid) {
+                        continueButton.classList.add('enabled');
+                    } else {
+                        continueButton.classList.remove('enabled');
+                    }
+                });
+            });
+            
+            // Handle form submission
+            form.addEventListener('submit', function(e) {
+                e.preventDefault();
+                
+                if (!validateForm()) {
+                    return;
+                }
+                
+                // Show loading state
+                form.style.display = 'none';
+                loading.style.display = 'block';
+                
+                // Collect form data
+                const userData = {
+                    jobId: jobId,
+                    firstName: document.getElementById('firstName').value.trim(),
+                    lastName: document.getElementById('lastName').value.trim(),
+                    email: document.getElementById('email').value.trim()
+                };
+                
+                // First send data to parent window
+                window.opener.postMessage({
+                    type: 'free_pass_submitted',
+                    userData: userData
+                }, '*');
+                
+                // Then send to backend
+                fetch('/api/free-pass-submit', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(userData)
+                })
+                .then(response => response.json())
+                .catch(error => {
+                    console.error('Error submitting free pass data:', error);
+                })
+                .finally(() => {
+                    // Always close the window after a short delay, regardless of response
+                    setTimeout(() => {
+                        window.close();
+                    }, 1500);
+                });
+            });
+        });
+    </script>
+</body>
+</html>

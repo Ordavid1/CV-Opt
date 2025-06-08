@@ -1,0 +1,91 @@
+name: Build and Deploy to Cloud Run
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+  pull_request:
+    branches:
+      - main
+
+env:
+  PROJECT_ID: vaulted-bivouac-417511
+  REGION: us-east1
+  SERVICE_NAME: cv-opt
+  REPOSITORY: cv-opt-repo
+  IMAGE: cv-opt
+
+jobs:
+  setup-build-deploy:
+    name: Setup, Build, and Deploy
+    runs-on: ubuntu-latest
+    
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    # Authenticate to Google Cloud using Workload Identity Federation
+    - name: Google Auth
+      id: auth
+      uses: google-github-actions/auth@v2
+      with:
+        workload_identity_provider: '${{ secrets.WIF_PROVIDER }}'
+        service_account: '${{ secrets.WIF_SERVICE_ACCOUNT }}'
+
+    # Setup gcloud CLI
+    - name: Set up Cloud SDK
+      uses: google-github-actions/setup-gcloud@v2
+      with:
+        project_id: ${{ env.PROJECT_ID }}
+
+    # Configure Docker to use gcloud as a credential helper
+    - name: Configure Docker
+      run: |
+        gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev
+
+    # Build the Docker image
+    - name: Build Docker Image
+      run: |
+        docker build -t "${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE }}:${{ github.sha }}" .
+        docker build -t "${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE }}:latest" .
+
+    # Push the Docker image to Google Artifact Registry
+    - name: Push Docker Image
+      run: |
+        docker push "${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE }}:${{ github.sha }}"
+        docker push "${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE }}:latest"
+
+    # Deploy to Cloud Run
+    - name: Deploy to Cloud Run
+      id: deploy
+      uses: google-github-actions/deploy-cloudrun@v2
+      with:
+        service: ${{ env.SERVICE_NAME }}
+        region: ${{ env.REGION }}
+        image: ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE }}:${{ github.sha }}
+        flags: |
+          --service-account=${{ env.SERVICE_NAME }}@${{ env.PROJECT_ID }}.iam.gserviceaccount.com
+          --set-secrets=OPENAI_API_KEY=OPENAI_API_KEY:latest
+          --set-secrets=APP_URL=APP_URL:latest
+          --set-secrets=LEMON_SQUEEZY_STORE_ID=LEMON_SQUEEZY_STORE_ID:latest
+          --set-secrets=LEMON_SQUEEZY_VARIANT_ID=LEMON_SQUEEZY_VARIANT_ID:latest
+          --set-secrets=LEMON_API_KEY=LEMON_API_KEY:latest
+          --set-secrets=LEMON_SQUEEZY_WEBHOOK_SECRET=LEMON_SQUEEZY_WEBHOOK_SECRET:latest
+          --set-secrets=ADMIN_API_KEY=ADMIN_API_KEY:latest
+          --set-env-vars=NODE_ENV=production
+          --set-env-vars=DATA_STORAGE_TYPE=cloud-storage
+          --set-env-vars=STORAGE_BUCKET=cv-opt-user-data
+          --memory=512Mi
+          --cpu=1
+          --timeout=300
+          --concurrency=80
+          --max-instances=10
+
+    # Output the URL
+    - name: Show Output
+      run: echo ${{ steps.deploy.outputs.url }}

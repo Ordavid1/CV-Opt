@@ -1,0 +1,795 @@
+/* CSS Reset */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html {
+  background: var(--background);
+  min-height: 100vh;
+}
+
+/* Design tokens */
+:root {
+  --primary: #ff4081;
+  --secondary: #00aaff;
+  --background: #121212;
+  --surface: #1e1e1e;
+  --text: #e0e0e0;
+  --accent: #ff4081;
+  --border: rgba(255, 255, 255, 0.1);
+  --transition-speed: 0.3s;
+  --radius: 8px;
+}
+
+body, html {
+  background-color: var(--background);
+  color: var(--text);
+  min-height: 100vh;
+  margin: 0;
+  padding: 0;
+}
+
+.container, .hero, .input-section {
+  background-color: var(--surface);
+}
+
+input, textarea, select {
+  background-color: var(--surface);
+  color: var(--text);
+  border-color: var(--border);
+}
+
+/* Global styles */
+body {
+  font-family: 'Poppins', sans-serif;
+  background: var(--background);
+  color: var(--text);
+  line-height: 1.6;
+  min-height: 100vh;
+  margin: 0;
+  padding: 0;
+}
+
+
+/* Hero Section */
+.hero {
+  background: linear-gradient(135deg, var(--primary), var(--secondary));
+  color: var(--text);
+  padding: 4rem 2rem 4rem;
+  text-align: center;
+  position: relative;
+  overflow: hidden;
+}
+
+.hero h2 {
+  font-size: 2.5rem;
+  margin-bottom: 1rem;
+  animation: fadeInUp 1s ease-out;
+}
+
+.hero p {
+  font-size: 1.2rem;
+  max-width: 800px;
+  margin: 0 auto 2rem;
+  animation: fadeInUp 1.2s ease-out;
+}
+
+/* Container */
+.container {
+  padding: 2rem;
+  width: 100%;
+  max-width: none;
+  margin: 0;
+}
+
+/* Input Section */
+.input-section {
+  margin-bottom: 2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  align-items: center;
+  width: 100%;
+}
+
+/* Job URL and Slider Container */
+.job-input-container {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 1rem;
+  width: 100%;
+  max-width: 700px;
+}
+
+.job-url-group,
+.slider-group {
+  flex: 1;
+  min-width: 200px;
+  display: flex;
+  flex-direction: column;
+}
+
+.job-input-container label {
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+}
+
+.job-input-container input[type="url"] {
+  width: 100%;
+  padding: 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-size: 1rem;
+  transition: border var(--transition-speed);
+  background: var(--surface);
+  color: var(--text);
+}
+
+.job-input-container input[type="url"]:focus {
+  border-color: var(--primary);
+  outline: none;
+}
+
+/* About Section Styles */
+#about-button {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  background-color: rgba(255, 210, 76, 0.9);
+  color: #000;
+  padding: 8px 16px;
+  border-radius: 20px;
+  cursor: pointer;
+  font-weight: 600;
+  z-index: 900;
+  transition: all var(--transition-speed) ease;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+}
+
+#about-button:hover {
+  background-color: rgba(255, 200, 46, 1);
+  transform: scale(1.05);
+}
+
+/* Overlay and Panel Styling */
+#about-overlay {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  background-color: rgba(0, 0, 0, 0);  /* Start completely transparent */
+  backdrop-filter: blur(0px);           /* Start with no blur */
+  z-index: 1000;
+  display: block;                       /* Always display, but use visibility and opacity */
+  visibility: hidden;
+  opacity: 0;
+  transition: 
+    opacity 0.4s ease, 
+    backdrop-filter 0.4s ease, 
+    background-color 0.4s ease,
+    visibility 0s linear 0.4s;          /* Delay the visibility change */
+  pointer-events: none;                 /* Disable interaction when hidden */
+}
+
+#about-panel {
+  position: absolute;
+  top: 0;
+  right: -33.33%;                       /* Start off-screen */
+  bottom: 0;
+  width: 33.33%;                        /* One third of screen */
+  background-color: rgba(30, 30, 30, 0.95);
+  color: var(--text);
+  padding: 20px;
+  overflow-y: auto;
+  transition: right 0.5s cubic-bezier(0.16, 1, 0.3, 1); /* Use cubic-bezier for smoother easing */
+  box-shadow: -5px 0 15px rgba(0, 0, 0, 0);  /* Start with no shadow */
+  transform: translateZ(0);             /* Force hardware acceleration */
+  will-change: right, box-shadow;       /* Optimize for animation */
+}
+
+/* When panel is open */
+#about-overlay.open {
+  background-color: rgba(0, 0, 0, 0.3);
+  backdrop-filter: blur(4px);
+  visibility: visible;
+  opacity: 1;
+  transition: 
+    opacity 0.4s ease, 
+    backdrop-filter 0.4s ease, 
+    background-color 0.4s ease,
+    visibility 0s linear 0s;            /* No delay for visibility on open */
+  pointer-events: auto;                 /* Enable interaction when visible */
+}
+
+#about-overlay.open #about-panel {
+  right: 0;
+  box-shadow: -5px 0 15px rgba(0, 0, 0, 0.5);
+}
+
+#about-overlay.open .about-content {
+  opacity: 1;
+  transform: translateX(0);
+}
+
+/* Close button */
+.about-header {
+  display: flex;
+  justify-content: flex-end;
+  padding-bottom: 10px;
+}
+
+#close-about {
+  background: none;
+  border: none;
+  color: var(--text);
+  font-size: 24px;
+  cursor: pointer;
+  padding: 5px 10px;
+  transition: all 0.2s;
+  box-shadow: none;
+}
+
+#close-about:hover {
+  color: rgba(255, 210, 76, 0.9);
+  transform: scale(1.1);
+  box-shadow: none;
+}
+
+/* Content styling */
+.about-content {
+  opacity: 0;
+  transform: translateX(20px);
+  transition: opacity 0.4s ease, transform 0.4s ease;
+  transition-delay: 0.2s;  /* Start after the panel has begun to appear */
+}
+
+.about-content h1 {
+  font-size: 24px;
+  margin-bottom: 15px;
+  color: rgba(255, 210, 76, 0.9);
+}
+
+.about-content h2 {
+  font-size: 20px;
+  margin: 20px 0 10px;
+  color: rgba(255, 210, 76, 0.9);
+}
+
+.about-content p, 
+.about-content li {
+  margin-bottom: 10px;
+  line-height: 1.6;
+}
+
+.about-content ul {
+  padding-left: 20px;
+}
+
+.about-content a {
+  color: rgba(255, 210, 76, 0.9);
+  text-decoration: none;
+}
+
+.about-content a:hover {
+  text-decoration: underline;
+}
+
+.about-content strong {
+  font-weight: 600;
+}
+
+/* Slider */
+.slider-container {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  height: 40px;
+  transition: border var(--transition-speed);
+}
+
+.slider-container:focus-within {
+  border-color: var(--primary);
+}
+
+.slider-container input[type="range"] {
+  flex: 1;
+  background: transparent;
+}
+
+.slider-container span {
+  font-weight: 600;
+  min-width: 25px;
+  text-align: center;
+}
+
+/* Frame Container */
+.frameContainer {
+  display: flex;
+  gap: 1rem;
+  width: 100%;
+  margin-top: 1rem;
+}
+
+.frameContainer iframe {
+  flex: 1;
+  width: 100%;
+  height: calc(100vh - 400px);
+  min-height: 320px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+  transition: transform var(--transition-speed);
+}
+
+/* Button */
+button {
+  display: inline-block;
+  background: var(--primary);
+  color: #fff;
+  border: none;
+  padding: 0.9rem 2rem;
+  font-size: 1rem;
+  border-radius: 50px;
+  cursor: pointer;
+  transition: transform var(--transition-speed), box-shadow var(--transition-speed);
+  box-shadow: 0 4px 15px rgba(255, 64, 129, 0.3);
+}
+
+button:hover {
+  transform: scale(1.05);
+  box-shadow: 0 6px 20px rgba(255, 64, 129, 0.5);
+}
+
+.transaction-message {
+  margin: 0;
+  padding: 0.2rem 0;
+  font-size: 1rem;
+  text-align: center;
+  color: var(--text);
+}
+
+
+/* Status */
+#status {
+  position: fixed;
+  top: 80px;
+  right: 20px;
+  background: rgba(20, 20, 20, 0.95);
+  padding: 1rem 1.5rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  z-index: 200;
+  font-weight: 600;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.3s ease-in-out, visibility 0.3s ease-in-out;
+}
+
+#status.show {
+  opacity: 1;
+  visibility: visible;
+}
+
+.error { color: #ff6b6b; }
+.success { color: #4caf50; }
+
+/* Changes Section */
+.changes-section {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.5rem;
+  margin-top: 2rem;
+  color: var(--text);
+  font-family: 'Arial', sans-serif;
+}
+
+#changes {
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  line-height: 1.6;
+  font-size: 0.95rem;
+}
+
+.changes-section h3 {
+  margin-bottom: 1rem;
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+/* Diff styling */
+.diff-added {
+  background-color: rgba(76, 175, 80, 0.15);
+  color: #4caf50 !important;
+  text-decoration: none;
+  padding: 2px 0;
+}
+
+.diff-removed {
+  background-color: rgba(244, 67, 54, 0.15);
+  color: #f44336 !important;
+  text-decoration: line-through;
+  padding: 2px 0;
+}
+
+.diff-unchanged {
+  color: var(--text) !important;
+  padding: 2px 0;
+}
+
+/* Updated Checkout Modal Styles */
+.checkout-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: transparent; /* Changed from rgba(0, 0, 0, 0.7) to transparent */
+  z-index: 1000;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  pointer-events: none; /* Make overlay transparent to clicks except for modal */
+  opacity: 0;
+  transform: scale(0);
+  transform-origin: center bottom; /* For genie effect originating from bottom center */
+  transition: opacity 0.5s ease, transform 0s;
+}
+
+.checkout-overlay.open {
+  opacity: 1;
+  transform: scale(1);
+  pointer-events: auto; /* Re-enable clicks when open */
+  transition: opacity 0.5s ease, transform 0.5s cubic-bezier(0.2, 0.8, 0.3, 1.2); /* Genie-like curve */
+}
+
+.checkout-container {
+  width: 95%;
+  max-width: 800px;
+  height: 90%;
+  background-color: #1e1e1e;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 2px 20px rgba(0, 0, 0, 0.4);
+  display: flex;
+  flex-direction: column;
+  transform-origin: center bottom; /* Match overlay's transform origin */
+  transform: scale(0.7); /* Initial scale for animation */
+  pointer-events: auto; /* Always allow clicks on the container */
+  transition: transform 0.5s cubic-bezier(0.2, 0.8, 0.3, 1.2);
+}
+
+.checkout-overlay.open .checkout-container {
+  transform: scale(1);
+}
+
+/* When closing the overlay */
+.checkout-overlay.closing {
+  opacity: 0;
+  transform: scale(0);
+  transition: opacity 0.5s ease, transform 0.5s cubic-bezier(0.7, 0.1, 0.85, 0.5); /* Different curve for closing */
+}
+
+/* Fix animation for checkout modal */
+@keyframes modalFadeIn {
+  from { opacity: 0; transform: translateY(20px) scale(0.95); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes modalFadeOut {
+  from { opacity: 1; transform: translateY(0) scale(1); }
+  to { opacity: 0; transform: translateY(20px) scale(0.95); }
+}
+
+.checkout-overlay.closing .checkout-container {
+  transform: scale(0.7);
+  transition: transform 0.5s cubic-bezier(0.7, 0.1, 0.85, 0.5);
+  animation: modalFadeOut 0.3s ease forwards;
+}
+
+.checkout-header {
+  display: flex;
+  justify-content: flex-end;
+  padding: 10px;
+  background-color: #2a2a2a;
+}
+
+.checkout-close {
+  background: none;
+  border: none;
+  color: var(--text);
+  font-size: 24px;
+  cursor: pointer;
+  padding: 5px 10px;
+  transition: all 0.2s;
+  box-shadow: none;
+}
+
+.checkout-close:hover {
+  color: var(--primary);
+  transform: scale(1.1);
+}
+
+.checkout-body {
+  flex: 1;
+  overflow: hidden;
+  background-color: #1e1e1e;
+}
+
+.checkout-iframe {
+  width: 100%;
+  height: 100%;
+  border: none;
+  background-color: transparent;
+}
+
+/* Media queries for responsive design */
+@media (max-width: 768px) {
+  .checkout-container {
+    width: 95%;
+    height: 85%;
+    max-width: 600px;
+    border-radius: 12px;
+  }
+}
+
+/* For larger screens, make the checkout even wider */
+@media (min-width: 1200px) {
+  .checkout-container {
+    max-width: 900px; /* Wider on large screens */
+  }
+}
+
+/* Ensure proper responsive behavior on mobile */
+@media (max-width: 768px) {
+  .checkout-container {
+    width: 100%;
+    height: 85%;
+    max-width: none;
+    border-radius: 12px 12px 0 0;
+  }
+}
+
+/* Animations */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Mobile Styles */
+@media (max-width: 768px) {
+  header {
+    display: none;
+  }
+
+  #status {
+    top: -100px;
+    right: 0;
+    left: 0;
+    margin: 0 auto;
+    width: 90%;
+  }
+
+  #status.show {
+    animation: slideDown 0.5s forwards, fadeOut 0.5s forwards 4.5s;
+    opacity: 1;
+    visibility: visible;
+  }
+
+  .hero {
+    margin-top: 0;
+    padding: 4rem 3rem;
+  }
+
+  .hero h2 {
+    font-size: clamp(1.5rem, 5vw, 2.5rem);
+    margin-bottom: 0.5rem;
+  }
+
+  .hero p {
+    font-size: clamp(0.9rem, 3vw, 1.2rem);
+    margin: 0 0.5rem;
+  }
+
+  .container {
+    padding: 1rem;
+  }
+
+  .job-input-container {
+    flex-direction: column;
+    width: 100%;
+    max-width: none;
+    padding: 0 1rem;
+  }
+
+  .job-url-group,
+  .slider-group {
+    width: 100%;
+  }
+
+  .frameContainer {
+    flex-direction: column;
+  }
+
+  .frameContainer iframe {
+    height: 400px;
+  }
+
+  .modal-container {
+    width: 95%;
+    height: 80vh;
+  }
+}
+
+/* Payment section styling update */
+.payment-label {
+  color: var(--text);
+  font-size: 1.1rem;
+  font-weight: 600;
+  text-align: center;
+  display: block;
+  width: 100%;
+  margin-bottom: 1rem;
+}
+
+.payment-section {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 100%;
+  padding: 2rem 0;
+  margin: 2rem 0;
+}
+
+.payment-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+  max-width: 400px;
+  width: 100%;
+}
+
+/* Overlay */
+/* Modal Styles */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.7);
+  z-index: 1000;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.modal-container {
+  position: relative;
+  width: 95%;
+  max-width: 900px; /* Wider modal */
+  height: 90vh;
+  background-color: #fff;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+  display: flex;
+  flex-direction: column;
+}
+
+.modal-body {
+  flex: 1;
+  padding: 0;
+  position: relative;
+  overflow: hidden;
+  height: 100%; /* Full height when header is removed */
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  background-color: #f8f9fa;
+  border-bottom: 1px solid #e9ecef;
+}
+
+.modal-title {
+  font-weight: 600;
+  font-size: 18px;
+  margin: 0;
+}
+
+.modal-close {
+  background: none;
+  border: none;
+  font-size: 24px;
+  cursor: pointer;
+  color: #6c757d;
+}
+
+.modal-close:hover {
+  color: #343a40;
+}
+
+.modal-iframe {
+  width: 100%;
+  height: 100%;
+  border: none;
+}
+
+
+/* Animation for modal */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* Keyframes can live outside the media query */
+@keyframes slideDown {
+  from { top: -100px; }
+  to { top: 20px; }
+}
+
+@keyframes fadeOut {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+/* Responsive adjustments */
+@media (max-width: 1024px) {
+  #about-panel {
+    width: 40%;
+  }
+}
+
+@media (max-width: 768px) {
+  #about-panel {
+    width: 60%;
+  }
+  
+  #about-button {
+    font-size: 0.9rem;
+    padding: 7px 14px;
+  }
+}
+
+@media (max-width: 480px) {
+  #about-panel {
+    width: 85%;
+  }
+  
+  #about-button {
+    top: 10px;
+    right: 10px;
+    padding: 6px 12px;
+    font-size: 14px;
+  }
+  
+  .about-content h1 {
+    font-size: 20px;
+  }
+  
+  .about-content h2 {
+    font-size: 18px;
+  }
+}
