@@ -8,7 +8,6 @@ import { fileURLToPath } from 'url';
 import path from 'path';
 import dotenv from 'dotenv';
 import winston from 'winston';
-import { createServer } from 'http';
 import fetch from 'node-fetch';
 import { load } from 'cheerio';
 import OpenAI from 'openai';
@@ -25,15 +24,6 @@ import { createCVRefinementPrompt, createInitialGreeting } from './public/prompt
 dotenv.config();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-
-// -----------------------
-// Initialize Express app
-// -----------------------
-
-const app = express();
-const PORT = process.env.PORT || 8080;
-const HOST = process.env.NODE_ENV === 'production' && process.env.HTTPS === 'false' ? '0.0.0.0' : 'localhost';
-
 
 // -------------------------------------------------------------------
 // Logger setup with Winston
@@ -54,6 +44,14 @@ logger.info('Application started - Enhanced Logging');
 // Add this near the top of your file after setting __dirname
 logger.info(`Current directory: ${__dirname}`);
 logger.info(`Views directory: ${path.join(__dirname, 'views')}`);
+
+// -----------------------
+// Initialize Express app
+// -----------------------
+
+const app = express();
+const PORT = process.env.PORT || 8080;
+const HOST = '0.0.0.0'; // Always bind to 0.0.0.0 for Cloud Run
 
 // -------------------------------------------------------------------
 // Important middleware configuration for webhook handling
@@ -301,6 +299,7 @@ const requiredEnvVars = [
   'LEMON_SQUEEZY_VARIANT_ID',
   'APP_URL',
 ];
+
 const missingEnvVars = requiredEnvVars.filter(varName => {
   if (!process.env[varName]) {
     logger.error(`Missing environment variable: ${varName}`);
@@ -310,7 +309,8 @@ const missingEnvVars = requiredEnvVars.filter(varName => {
 });
 
 if (missingEnvVars.length > 0) {
-  logger.error(`Missing Lemon Squeezy environment variables: ${missingEnvVars.join(', ')}`);
+  logger.error(`Missing environment variables: ${missingEnvVars.join(', ')}`);
+  // Don't exit - Cloud Run will handle this
 }
 
 // -------------------------------------------------------------------
@@ -388,7 +388,7 @@ app.get('/', (_req, res, next) => {
     res.render('index', { 
       nonce,
       lemonsqueezyVariantId: process.env.LEMON_SQUEEZY_VARIANT_ID || '703669',
-      appUrl: process.env.APP_URL || `${protocolUsed}://${HOST}:${PORT}`
+      appUrl: process.env.APP_URL || `http://${HOST}:${PORT}` // Changed from protocolUsed to http
     });
   } catch (error) {
     logger.error('Error in root route:', error);
@@ -830,47 +830,20 @@ app.post('/refine', async (req, res) => {
   }
 }
 
-// Read SSL certificates
-// HTTPS/HTTP Server Setup
-let server;
-let protocolUsed = 'http';
+const server = http.createServer(app);
 
-try {
-  if (process.env.NODE_ENV === 'production') {
-    console.log('Starting in PRODUCTION mode with HTTP');
-    server = http.createServer(app);
-  } else {
-    try {
-      const options = {
-        key: fs.readFileSync(path.join(__dirname, 'certificates', 'localhost-key.pem')),
-        cert: fs.readFileSync(path.join(__dirname, 'certificates', 'localhost.pem'))
-      };
-      console.log('Starting in DEVELOPMENT mode with HTTPS');
-      server = https.createServer(options, app);
-      protocolUsed = 'https';
-    } catch (certError) {
-      console.error('Failed to load SSL certificates:', certError.message);
-      console.log('Falling back to HTTP for development');
-      server = http.createServer(app);
-      protocolUsed = 'http';
-    }
-  }
+server.listen(PORT, HOST, () => {
+  logger.info(`Server running at http://${HOST}:${PORT}`);
+  console.log(`Server is listening on port ${PORT}`);
+});
 
-  server.listen(PORT, HOST, () => {
-    console.log(`Server running at ${protocolUsed}://${HOST}:${PORT}`);
-  });
-
-  server.on('error', (error) => {
-    console.error('Server error:', error.message);
-    if (error.code === 'EADDRINUSE') {
-      console.error(`Port ${PORT} is already in use. Choose a different port.`);
-    }
+server.on('error', (error) => {
+  logger.error('Server error:', error.message);
+  if (error.code === 'EADDRINUSE') {
+    logger.error(`Port ${PORT} is already in use`);
     process.exit(1);
-  });
-} catch (startupError) {
-  console.error('Fatal error during server startup:', startupError.message);
-  process.exit(1);
-}
+  }
+});
 
 // Export the server and app for use in other parts of your code
 export { app, server };

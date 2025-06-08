@@ -50,7 +50,7 @@ EXPOSE 8080
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
-  CMD node healthcheck.js || exit 1
+  CMD curl -f http://0.0.0.0:${PORT}/health || exit 1
 
 # Use dumb-init to handle signals properly
 ENTRYPOINT ["dumb-init", "--"]
