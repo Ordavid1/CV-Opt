@@ -31,7 +31,6 @@ const __dirname = path.dirname(__filename);
 // -----------------------
 
 const app = express();
-
 const PORT = process.env.PORT || 8080;
 const HOST = process.env.NODE_ENV === 'production' && process.env.HTTPS === 'false' ? '0.0.0.0' : 'localhost';
 
@@ -56,52 +55,6 @@ logger.info('Application started - Enhanced Logging');
 logger.info(`Current directory: ${__dirname}`);
 logger.info(`Views directory: ${path.join(__dirname, 'views')}`);
 
-// Read SSL certificates
-// HTTPS/HTTP Server Setup
-let server;
-let protocolUsed = 'http';
-
-try {
-  if (process.env.NODE_ENV === 'production') {
-    console.log('Starting in PRODUCTION mode with HTTP');
-    server = http.createServer(app);
-  } else {
-    try {
-      const options = {
-        key: fs.readFileSync(path.join(__dirname, 'certificates', 'localhost-key.pem')),
-        cert: fs.readFileSync(path.join(__dirname, 'certificates', 'localhost.pem'))
-      };
-      console.log('Starting in DEVELOPMENT mode with HTTPS');
-      server = https.createServer(options, app);
-      protocolUsed = 'https';
-    } catch (certError) {
-      console.error('Failed to load SSL certificates:', certError.message);
-      console.log('Falling back to HTTP for development');
-      server = http.createServer(app);
-      protocolUsed = 'http';
-    }
-  }
-
-  server.listen(PORT, HOST, () => {
-    console.log(`Server running at ${protocolUsed}://${HOST}:${PORT}`);
-  });
-
-  server.on('error', (error) => {
-    console.error('Server error:', error.message);
-    if (error.code === 'EADDRINUSE') {
-      console.error(`Port ${PORT} is already in use. Choose a different port.`);
-    }
-    process.exit(1);
-  });
-} catch (startupError) {
-  console.error('Fatal error during server startup:', startupError.message);
-  process.exit(1);
-}
-
-// Export the server and app for use in other parts of your code
-export { app, server };
-
-
 // -------------------------------------------------------------------
 // Important middleware configuration for webhook handling
 // -------------------------------------------------------------------
@@ -120,33 +73,6 @@ app.use('/api/store-job-data', apiLimiter);
 app.use('/api/create-checkout', apiLimiter);
 app.use('/refine', apiLimiter);
 */
-
-// First add the raw body parser for webhooks
-const rawBodyParser = express.raw({ type: 'application/json' });
-
-// Configure route-specific middleware
-app.use((req, res, next) => {
-
-  if (req.path.includes('/api/store-job-data') || 
-      req.path.includes('/api/create-checkout') || 
-      req.path.includes('/api/refinement-status') ||
-      req.path.includes('/refine')) {
-    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
-    res.setHeader('Pragma', 'no-cache');
-    res.setHeader('Expires', '0');
-    res.setHeader('Surrogate-Control', 'no-store');
-  }
-  
-  // Use raw body parser for webhook endpoints
-  if (
-    req.path === '/webhooks/lemonsqueezy' || 
-    req.path === '/api/webhooks/lemonsqueezy'
-  ) {
-    return rawBodyParser(req, res, next);
-  } 
-  // For all other routes, continue to next middleware
-  next();
-});
 
 // Standard middleware for non-webhook routes
 app.use(express.json({ limit: '10mb' }));
@@ -174,16 +100,32 @@ app.use((_req, res, next) => {
   next();
 });
 
-// -------------------------------------------------------------------
-// Initialize Lemon Squeezy routes
-// -------------------------------------------------------------------
-logger.info('Initializing LS routes...');
-try {
-  initLemonSqueezyRoutes(app, logger);
-  logger.info('Lemon Squeezy routes initialized successfully');
-} catch (error) {
-  logger.error('Error initializing LS routes:', error);
-}
+// Add the raw body parser for webhooks
+const rawBodyParser = express.raw({ type: 'application/json' });
+
+// Configure route-specific middleware
+app.use((req, res, next) => {
+
+  if (req.path.includes('/api/store-job-data') || 
+      req.path.includes('/api/create-checkout') || 
+      req.path.includes('/api/refinement-status') ||
+      req.path.includes('/refine')) {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+    res.setHeader('Surrogate-Control', 'no-store');
+  }
+  
+  // Use raw body parser for webhook endpoints
+  if (
+    req.path === '/webhooks/lemonsqueezy' || 
+    req.path === '/api/webhooks/lemonsqueezy'
+  ) {
+    return rawBodyParser(req, res, next);
+  } 
+  // For all other routes, continue to next middleware
+  next();
+});
 
 // --------------------------------------
 // Setting index.ejs and security headers
@@ -371,7 +313,6 @@ if (missingEnvVars.length > 0) {
   logger.error(`Missing Lemon Squeezy environment variables: ${missingEnvVars.join(', ')}`);
 }
 
-
 // -------------------------------------------------------------------
 // Initialize OpenAI
 // -------------------------------------------------------------------
@@ -380,7 +321,9 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
+// -------------------------------------------------------------------
 // Serve front-end from the 'public' folder with updated headers for stylesheet access
+// -------------------------------------------------------------------
 app.use(express.static(path.join(__dirname, 'public'), {
   maxAge: '1d',
   etag: true,
@@ -398,6 +341,17 @@ app.use(express.static(path.join(__dirname, 'public'), {
     }
   }
 }));
+
+// -------------------------------------------------------------------
+// Initialize Lemon Squeezy routes
+// -------------------------------------------------------------------
+logger.info('Initializing LS routes...');
+try {
+  initLemonSqueezyRoutes(app, logger);
+  logger.info('Lemon Squeezy routes initialized successfully');
+} catch (error) {
+  logger.error('Error initializing LS routes:', error);
+}
 
 // -------------------------------------------------------------------
 // API Routes Group
@@ -875,6 +829,51 @@ app.post('/refine', async (req, res) => {
     throw err;
   }
 }
+
+// Read SSL certificates
+// HTTPS/HTTP Server Setup
+let server;
+let protocolUsed = 'http';
+
+try {
+  if (process.env.NODE_ENV === 'production') {
+    console.log('Starting in PRODUCTION mode with HTTP');
+    server = http.createServer(app);
+  } else {
+    try {
+      const options = {
+        key: fs.readFileSync(path.join(__dirname, 'certificates', 'localhost-key.pem')),
+        cert: fs.readFileSync(path.join(__dirname, 'certificates', 'localhost.pem'))
+      };
+      console.log('Starting in DEVELOPMENT mode with HTTPS');
+      server = https.createServer(options, app);
+      protocolUsed = 'https';
+    } catch (certError) {
+      console.error('Failed to load SSL certificates:', certError.message);
+      console.log('Falling back to HTTP for development');
+      server = http.createServer(app);
+      protocolUsed = 'http';
+    }
+  }
+
+  server.listen(PORT, HOST, () => {
+    console.log(`Server running at ${protocolUsed}://${HOST}:${PORT}`);
+  });
+
+  server.on('error', (error) => {
+    console.error('Server error:', error.message);
+    if (error.code === 'EADDRINUSE') {
+      console.error(`Port ${PORT} is already in use. Choose a different port.`);
+    }
+    process.exit(1);
+  });
+} catch (startupError) {
+  console.error('Fatal error during server startup:', startupError.message);
+  process.exit(1);
+}
+
+// Export the server and app for use in other parts of your code
+export { app, server };
 
 // -------------------------------------------------------------------
 // Serve index.html if needed
