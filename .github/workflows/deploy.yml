@@ -21,27 +21,19 @@ jobs:
     name: Setup, Build, and Deploy
     runs-on: ubuntu-latest
     
-    permissions:
-      contents: read
-      id-token: write
-
     steps:
     - name: Checkout
       uses: actions/checkout@v4
 
-    # Authenticate to Google Cloud using Workload Identity Federation
+    # OLD METHOD - Using service account key
     - name: Google Auth
-      id: auth
-      uses: google-github-actions/auth@v2
+      uses: google-github-actions/auth@v0
       with:
-        workload_identity_provider: '${{ secrets.WIF_PROVIDER }}'
-        service_account: '${{ secrets.WIF_SERVICE_ACCOUNT }}'
+        credentials_json: ${{ secrets.GCP_SA_KEY }}
 
     # Setup gcloud CLI
     - name: Set up Cloud SDK
-      uses: google-github-actions/setup-gcloud@v2
-      with:
-        project_id: ${{ env.PROJECT_ID }}
+      uses: google-github-actions/setup-gcloud@v1
 
     # Configure Docker to use gcloud as a credential helper
     - name: Configure Docker
@@ -62,30 +54,22 @@ jobs:
 
     # Deploy to Cloud Run
     - name: Deploy to Cloud Run
-      id: deploy
-      uses: google-github-actions/deploy-cloudrun@v2
-      with:
-        service: ${{ env.SERVICE_NAME }}
-        region: ${{ env.REGION }}
-        image: ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE }}:${{ github.sha }}
-        flags: |
-          --service-account=${{ env.SERVICE_NAME }}@${{ env.PROJECT_ID }}.iam.gserviceaccount.com
-          --set-secrets=OPENAI_API_KEY=OPENAI_API_KEY:latest
-          --set-secrets=APP_URL=APP_URL:latest
-          --set-secrets=LEMON_SQUEEZY_STORE_ID=LEMON_SQUEEZY_STORE_ID:latest
-          --set-secrets=LEMON_SQUEEZY_VARIANT_ID=LEMON_SQUEEZY_VARIANT_ID:latest
-          --set-secrets=LEMON_API_KEY=LEMON_API_KEY:latest
-          --set-secrets=LEMON_SQUEEZY_WEBHOOK_SECRET=LEMON_SQUEEZY_WEBHOOK_SECRET:latest
-          --set-secrets=ADMIN_API_KEY=ADMIN_API_KEY:latest
-          --set-env-vars=NODE_ENV=production
-          --set-env-vars=DATA_STORAGE_TYPE=cloud-storage
-          --set-env-vars=STORAGE_BUCKET=cv-opt-user-data
-          --memory=512Mi
-          --cpu=1
-          --timeout=300
-          --concurrency=80
+      run: |
+        gcloud run deploy ${{ env.SERVICE_NAME }} \
+          --image "${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE }}:${{ github.sha }}" \
+          --region ${{ env.REGION }} \
+          --platform managed \
+          --allow-unauthenticated \
+          --service-account=${{ env.SERVICE_NAME }}@${{ env.PROJECT_ID }}.iam.gserviceaccount.com \
+          --set-secrets=OPENAI_API_KEY=OPENAI_API_KEY:latest,APP_URL=APP_URL:latest,LEMON_SQUEEZY_STORE_ID=LEMON_SQUEEZY_STORE_ID:latest,LEMON_SQUEEZY_VARIANT_ID=LEMON_SQUEEZY_VARIANT_ID:latest,LEMON_API_KEY=LEMON_API_KEY:latest,LEMON_SQUEEZY_WEBHOOK_SECRET=LEMON_SQUEEZY_WEBHOOK_SECRET:latest,ADMIN_API_KEY=ADMIN_API_KEY:latest \
+          --set-env-vars=NODE_ENV=production,DATA_STORAGE_TYPE=memory,STORAGE_BUCKET=cv-opt-user-data \
+          --memory=512Mi \
+          --cpu=1 \
+          --timeout=300 \
+          --concurrency=80 \
           --max-instances=10
 
     # Output the URL
     - name: Show Output
-      run: echo ${{ steps.deploy.outputs.url }}
+      run: |
+        echo "Service URL: $(gcloud run services describe ${{ env.SERVICE_NAME }} --region ${{ env.REGION }} --format 'value(status.url)')"
