@@ -60,12 +60,14 @@ const HOST = '0.0.0.0'; // Always bind to 0.0.0.0 for Cloud Run
 app.use(session({
   secret: process.env.SESSION_SECRET || crypto.randomBytes(64).toString('hex'),
   resave: false,
-  saveUninitialized: false,
+  saveUninitialized: true, // Change to true
   cookie: { 
-    secure: process.env.NODE_ENV === 'production', 
+    secure: process.env.NODE_ENV === 'production' && !process.env.BEHIND_PROXY, 
     httpOnly: true,
-    maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
-  }
+    sameSite: 'lax', // Add this
+    maxAge: 30 * 24 * 60 * 60 * 1000
+  },
+  proxy: true // Add this if behind a proxy
 }));
 
 app.set('trust proxy', 1);
@@ -374,12 +376,17 @@ app.use((req, res, next) => {
   }
   
   // Validate token for other POST/PUT/DELETE requests
-  if (['POST', 'PUT', 'DELETE'].includes(req.method)) {
-    const token = req.headers['x-csrf-token'] || req.body._csrf;
-    if (!token || token !== req.session.csrfToken) {
-      return res.status(403).json({ error: 'Invalid CSRF token' });
-    }
+if (['POST', 'PUT', 'DELETE'].includes(req.method)) {
+  const token = req.headers['x-csrf-token'] || req.body._csrf;
+  const sessionToken = req.session?.csrfToken;
+  
+  logger.info(`CSRF Check - Path: ${req.path}, Token: ${token?.substring(0, 10)}..., Session Token: ${sessionToken?.substring(0, 10)}...`);
+  
+  if (!token || token !== sessionToken) {
+    logger.error(`CSRF token mismatch - Expected: ${sessionToken}, Got: ${token}`);
+    return res.status(403).json({ error: 'Invalid CSRF token' });
   }
+}
   
   next();
 });
@@ -476,15 +483,22 @@ app.get('/health', (_req, res) => {
 });
 
 
-app.get('/', (_req, res, next) => {
+app.get('/', (req, res, next) => {
   const nonce = crypto.randomBytes(16).toString('base64');
-  logger.info("Serving index.ejs");
+  
+  // Generate CSRF token if not exists
+  if (!req.session.csrfToken) {
+    req.session.csrfToken = crypto.randomBytes(32).toString('hex');
+  }
+  
+  logger.info("Serving index.ejs with CSRF token");
   
   try {
     res.render('index', { 
       nonce,
+      csrfToken: req.session.csrfToken, // Pass the session token
       lemonsqueezyVariantId: process.env.LEMON_SQUEEZY_VARIANT_ID || '703669',
-      appUrl: process.env.APP_URL || `http://${HOST}:${PORT}` // Changed from protocolUsed to http
+      appUrl: process.env.APP_URL || `http://${HOST}:${PORT}`
     });
   } catch (error) {
     logger.error('Error in root route:', error);
