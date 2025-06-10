@@ -7,7 +7,11 @@ import {
   markFreePassUsed,
   saveFreePassUserInfo,
   getFreePassUsers,
-  getFreePassUserCount 
+  getFreePassUserCount,
+  getUserCredits,
+  addUserCredits,
+  deductUserCredit,
+  saveCreditsStorage
 } from './storage.mjs';
 
 // New helper function to ensure atomic operations
@@ -148,6 +152,7 @@ app.post('/api/store-job-data', express.json(), (req, res) => {
       cvHTML,
       refinementLevel: finalLevel,
       tabSessionId: tabSessionId || Math.random().toString(36).substring(2), // Store the tabSessionId
+      userId: userId,
       createdAt: new Date().toISOString()
     });
     
@@ -178,6 +183,10 @@ app.post('/api/create-checkout', express.json(), async (req, res) => {
       return res.status(400).json({ error: "jobId is required" });
     }
     
+    // Extract bundleType from request
+    const { bundleType = 'single' } = req.body;
+    logger.info(`Payment type selected: ${bundleType}`);
+
     // Find the entry by jobId
     const jobData = jobDataStorage.get(jobId);
     
@@ -198,10 +207,76 @@ app.post('/api/create-checkout', express.json(), async (req, res) => {
       }
     }
     
-    // Generate userId for free pass check
+    // Generate userId for free pass and credits check
     const userId = generateUserId(req);
-    logger.info(`User ID for free pass check: ${userId.substring(0, 8)}...`);
-    
+    logger.info(`User ID: ${userId.substring(0, 8)}...`);
+
+    // Check if user has credits first
+    const userCredits = getUserCredits(userId);
+    if (userCredits > 0) {
+      logger.info(`User has ${userCredits} credits, using credit instead of payment`);
+      
+      // Deduct one credit
+      deductUserCredit(userId);
+      saveCreditsStorage(); // Save the credit deduction
+      
+      // IMPORTANT: Trigger refinement process for credit usage
+      try {
+        // Get the job data
+        const jobData = jobDataStorage.get(jobId);
+        if (!jobData || !jobData.jobUrl || !jobData.cvHTML) {
+          throw new Error('Missing job data for refinement');
+        }
+        
+        // Trigger refinement process immediately
+        const refineUrl = `${process.env.APP_URL || 'http://localhost:8080'}/refine`;
+        logger.info(`Starting credit-based refinement for jobId: ${jobId}`);
+        
+        const refineResponse = await fetch(refineUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            orderId: `credit-${jobId}`, // Mark as credit-based
+            jobId,
+            tabSessionId,
+            conversation: [],
+            jobUrl: jobData.jobUrl,
+            cvHTML: jobData.cvHTML,
+            refinementLevel: jobData.refinementLevel || 5
+          })
+        });
+        
+        if (!refineResponse.ok) {
+          const errorText = await refineResponse.text();
+          logger.error(`Failed to trigger credit-based refinement: ${errorText}`);
+          throw new Error('Failed to start refinement process');
+        }
+        
+        logger.info(`✅ Credit-based refinement started for jobId: ${jobId}`);
+        
+        // Return special response for credit usage
+        return res.json({
+          useCredit: true,
+          remainingCredits: userCredits - 1,
+          jobId: jobId,
+          refinementStarted: true
+        });
+        
+      } catch (error) {
+        logger.error(`Error starting credit-based refinement: ${error.message}`);
+        
+        // Refund the credit if refinement fails to start
+        addUserCredits(userId, 1);
+        saveCreditsStorage();
+        
+        return res.status(500).json({
+          error: 'Failed to start refinement process',
+          details: error.message,
+          creditRefunded: true
+        });
+      }
+    }
+
     // Check if user has already used their free pass
     const freePassUsed = hasUsedFreePass(userId);
     
@@ -218,12 +293,14 @@ app.post('/api/create-checkout', express.json(), async (req, res) => {
       data: {
         type: "checkouts",
         attributes: {
-          custom_price: 100,
+          custom_price: bundleType === 'bundle' ? 500 : 100, // $5 or $1 in cents
           checkout_data: {
             custom: {
               jobId: jobId,
               refinementLevel: String(jobData.refinementLevel),
-              tabSessionId: tabSessionId || Math.random().toString(36).substring(2) // Include the tabSessionId or generate a new one
+              tabSessionId: tabSessionId || Math.random().toString(36).substring(2),
+              bundleType: bundleType,
+              userId: userId // Add userId for credit tracking
             }
           }
         },
@@ -237,7 +314,9 @@ app.post('/api/create-checkout', express.json(), async (req, res) => {
           variant: {
             data: {
               type: "variants",
-              id: process.env.LEMON_SQUEEZY_VARIANT_ID
+              id: bundleType === 'bundle' 
+                ? process.env.LEMON_SQUEEZY_VARIANT_ID_BUNDLE 
+                : (process.env.LEMON_SQUEEZY_VARIANT_ID)
             }
           }
         }
@@ -259,8 +338,8 @@ app.post('/api/create-checkout', express.json(), async (req, res) => {
     logger.debug(`Lemon Squeezy API response: ${JSON.stringify(responseData)}`);
     
     if (!response.ok) {
-      const errorData = await response.json();
-      logger.error('Lemon Squeezy API error details:', JSON.stringify(errorData));
+      // Don't try to read the body again if it was already logged
+      logger.error('Lemon Squeezy API error: Status ' + response.status);
       throw new Error(`API error: ${response.status} ${response.statusText}`);
     }
 
@@ -272,8 +351,10 @@ app.post('/api/create-checkout', express.json(), async (req, res) => {
     logger.info('Checkout session created:', checkoutUrl);
     res.json({ 
       checkoutUrl,
-      refinementLevel: jobData.refinementLevel // Echo back in response
+      refinementLevel: jobData.refinementLevel, // Echo back in response
+      bundleType: bundleType // ADD THIS LINE
     });
+
   } catch (error) {
     logger.error('Checkout creation error:', error);
     res.status(500).json({
@@ -348,26 +429,98 @@ app.post('/webhooks/lemonsqueezy', express.raw({ type: 'application/json' }), as
       const status = payload.data.attributes?.status;
       
       if (status === 'paid') {
-        // Extract custom data
+        // Extract custom data - check multiple possible locations
         let jobId = null;
         let refinementLevel = null;
-        let tabSessionId = null; // Variable to store the tab session ID
+        let tabSessionId = null;
+        let bundleType = null;
+        let userId = null;
         
-        // Try to extract from checkout_data.custom
+        // Method 1: From checkout_data.custom
         if (payload.data.attributes?.checkout_data?.custom) {
+            logger.info(`DEBUG: Full checkout_data: ${JSON.stringify(payload.data.attributes?.checkout_data)}`);
+            logger.info(`DEBUG: Full attributes: ${JSON.stringify(payload.data.attributes)}`);
           const customData = payload.data.attributes.checkout_data.custom;
           jobId = customData.jobId;
           refinementLevel = customData.refinementLevel;
-          tabSessionId = customData.tabSessionId; // Extract tabSessionId
+          tabSessionId = customData.tabSessionId;
+          bundleType = customData.bundleType;
+          userId = customData.userId;
           
-          logger.info(`Found jobId (${jobId}), refinement level (${refinementLevel}), and tabSessionId (${tabSessionId}) from checkout data`);
+          logger.info(`Found custom data - jobId: ${jobId}, bundle: ${bundleType}, userId: ${userId}`);
         }
-        // Option 2: From meta_data if available
-        else if (payload.data.attributes?.meta_data?.jobId) {
-          jobId = payload.data.attributes.meta_data.jobId;
-          refinementLevel = payload.data.attributes.meta_data.refinementLevel;
-          logger.info(`Found jobId (${jobId}) and refinement level (${refinementLevel}) from meta_data`);
+
+        // ADD THIS: Method 1.5 - Get userId from customer email
+        if (!userId && payload.data.attributes?.user_email) {
+          const email = payload.data.attributes.user_email;
+          // Generate the same userId that the browser generates
+          // But we need to match the browser's userId generation method
+          userId = crypto.createHash('sha256').update(email).digest('hex');
+          logger.info(`Generated userId from customer email (${email}): ${userId.substring(0, 8)}...`);
         }
+        // ADD THESE DEBUG LOGS
+          logger.info(`DEBUG: Full payload.data.attributes keys: ${Object.keys(payload.data.attributes || {})}`);
+          logger.info(`DEBUG: checkout_data exists? ${!!payload.data.attributes?.checkout_data}`);
+          logger.info(`DEBUG: checkout_data.custom exists? ${!!payload.data.attributes?.checkout_data?.custom}`);
+        
+        // Method 2: From first_order_item.variant.slug or product name
+        if (!bundleType && payload.data.attributes?.first_order_item) {
+          const variantId = payload.data.attributes.first_order_item.variant_id;
+          // Check if this is the bundle variant
+          if (variantId == process.env.LEMON_SQUEEZY_VARIANT_ID_BUNDLE) {
+            bundleType = 'bundle';
+            logger.info(`Detected bundle purchase from variant ID: ${variantId}`);
+          }
+        }
+        
+        // Method 3: From order total (if $5.00 = bundle)
+        if (!bundleType && payload.data.attributes?.total == 500) { // 500 cents = $5
+          bundleType = 'bundle';
+          logger.info(`Detected bundle purchase from total amount: $5.00`);
+        }
+
+        // Method 4: If still no userId, try to extract from customer email or create from order data
+        if (!userId && payload.data.attributes?.customer_email) {
+          // Generate userId from email
+          const email = payload.data.attributes.customer_email;
+          userId = crypto.createHash('sha256').update(email).digest('hex');
+          logger.info(`Generated userId from customer email: ${userId.substring(0, 8)}...`);
+        }
+
+        // Method 5: If STILL no userId for bundle purchase, use order ID as last resort
+        if (!userId && bundleType === 'bundle' && orderId) {
+          // This is not ideal but ensures bundle purchases aren't lost
+          userId = crypto.createHash('sha256').update(`order-${orderId}`).digest('hex');
+          logger.warn(`Generated userId from order ID for bundle purchase: ${userId.substring(0, 8)}...`);
+        }
+        
+        // If we still don't have userId but have a bundle, extract from most recent job
+        if (bundleType === 'bundle' && !userId && jobId) {
+          const jobData = jobDataStorage.get(jobId);
+          if (jobData && jobData.userId) {
+            userId = jobData.userId;
+            logger.info(`Extracted userId from job data: ${userId.substring(0, 8)}...`);
+          }
+        }
+
+        // If we still don't have userId, try to extract it from the stored job data
+        if (!userId && jobId) {
+          const jobData = jobDataStorage.get(jobId);
+          if (jobData) {
+            // The userId might be stored in the job data from the checkout creation
+            userId = jobData.userId;
+            logger.info(`Extracted userId from job data: ${userId.substring(0, 8)}...`);
+          }
+        }
+
+        // If not a bundle purchase, continue with the jobId extraction logic
+        if (!jobId) {
+          // Option 2: From meta_data if available
+          if (payload.data.attributes?.meta_data?.jobId) {
+            jobId = payload.data.attributes.meta_data.jobId;
+            refinementLevel = payload.data.attributes.meta_data.refinementLevel;
+            logger.info(`Found jobId (${jobId}) and refinement level (${refinementLevel}) from meta_data`);
+          }
         // Option 3: Look for the most recent job data if jobId not found
         else {
           logger.warn("No jobId found in webhook payload, looking for most recent job");
@@ -386,19 +539,48 @@ app.post('/webhooks/lemonsqueezy', express.raw({ type: 'application/json' }), as
             jobId = allJobIds[0];
             const jobData = jobDataStorage.get(jobId);
             refinementLevel = jobData?.refinementLevel || 5;
+            
+            // EXTRACT userId FROM JOB DATA - ADD THIS
+            if (jobData?.userId) {
+              userId = jobData.userId;
+              logger.info(`Extracted userId from most recent job data: ${userId.substring(0, 8)}...`);
+            }
+            
             logger.info(`Using most recent jobId: ${jobId} with refinement level: ${refinementLevel}`);
           }
         }
+      }
 
-        if (!jobId) {
-          logger.error(`❌ No jobId found for order ${orderId}`);
-          return res.status(200).json({ 
+        logger.info(`DEBUG: Before bundle check - bundleType: ${bundleType}, userId: ${userId ? userId.substring(0, 8) : 'null'}, jobId: ${jobId}`);
+        // CHECK IF THIS IS A BUNDLE PURCHASE - THIS MUST BE HERE, NOT IN THE ELSE BLOCK
+        if (bundleType === 'bundle' && userId) {
+          logger.info(`✅ Bundle purchase confirmed for user ${userId.substring(0, 8)}...`);
+          
+          // Add 10 credits to the user
+          addUserCredits(userId, 10);
+          saveCreditsStorage();
+
+          if (jobId) {
+            const existingData = jobDataStorage.get(jobId) || {};
+            jobDataStorage.set(jobId, {
+              ...existingData,
+              isBundlePurchase: true,
+              bundleCredits: 10,
+              completedAt: new Date().toISOString()
+            });
+          }
+
+          logger.info(`✅ Added 10 credits to user ${userId.substring(0, 8)}...`);
+          
+          // Don't trigger refinement for bundle purchases
+          return res.status(200).json({
             received: true,
-            status: 'error',
-            message: "No job data found for this order"
+            status: 'credits_added',
+            credits: 10,
+            userId: userId
           });
         }
-        
+
         // Find job data by jobId
         const jobData = jobDataStorage.get(jobId);
         
@@ -410,9 +592,7 @@ app.post('/webhooks/lemonsqueezy', express.raw({ type: 'application/json' }), as
             message: "No job data found for this order"
           });
         }
-        
-        const { jobUrl, cvHTML } = jobData;
-        logger.info(`✅ Found stored job data for order ${orderId} with jobId ${jobId}`);
+        logger.info(`✅ Order ${orderId} paid, processing jobId: ${jobId}`);
         
           // Determine final refinement level to use, with fallbacks
           // Convert to number if it's a string
@@ -504,6 +684,16 @@ app.post('/api/refinement-status', express.json(), async (req, res) => {
       });
     }
     
+    // CHECK IF THIS WAS A BUNDLE PURCHASE
+    if (jobData.isBundlePurchase) {
+      logger.info(`This was a bundle purchase - no refinement needed`);
+      return res.json({
+        status: 'bundle_purchase',
+        bundleCredits: jobData.bundleCredits || 10,
+        message: 'Bundle purchase completed - credits added'
+      });
+    }
+
     // Check if this is for a different tab session
     if (tabSessionId && jobData.tabSessionId && tabSessionId !== jobData.tabSessionId) {
       logger.info(`Tab session mismatch: request has ${tabSessionId}, job has ${jobData.tabSessionId}`);
@@ -700,6 +890,20 @@ app.post('/api/free-pass-submit', express.json(), async (req, res) => {
     logger.error(error.stack);
     return res.status(500).json({ success: false, message: 'Internal server error' });
   }
+});
+
+// Credits check endpoint
+app.get('/api/check-credits', (req, res) => {
+  const userId = generateUserId(req);
+  const credits = getUserCredits(userId);
+  
+  logger.info(`Credits check for user ${userId.substring(0, 8)}...: ${credits} credits`);
+  
+  res.json({ 
+    credits: credits,
+    hasCredits: credits > 0,
+    userId: userId.substring(0, 8) + '...'
+  });
 });
 
 // Admin endpoint to view free pass stats

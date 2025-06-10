@@ -73,37 +73,32 @@ app.use('/refine', apiLimiter);
 */
 
 // Standard middleware for non-webhook routes
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true }));
+
 
 // Updated CORS configuration
 app.use(cors({
-  origin: '*',  // Allow all origins
+  origin: '*',
   methods: ['GET', 'POST', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: true,
-  maxAge: 86400  // 24 hours
+  maxAge: 86400
 }));
 
-app.use(compression()); // Enable Gzip compression
+app.use(compression());
 
-// Add security headers, but ensure stylesheet access
+// Add security headers
 app.use((_req, res, next) => {
   res.setHeader('X-Frame-Options', 'SAMEORIGIN');
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('X-XSS-Protection', '1; mode=block');
-  // Add CORS headers for stylesheets
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.locals.nonce = crypto.randomBytes(16).toString('base64');
   next();
 });
 
-// Add the raw body parser for webhooks
-const rawBodyParser = express.raw({ type: 'application/json' });
-
-// Configure route-specific middleware
+// CRITICAL: Apply body parsers conditionally
 app.use((req, res, next) => {
-
+  // Set cache headers for specific routes
   if (req.path.includes('/api/store-job-data') || 
       req.path.includes('/api/create-checkout') || 
       req.path.includes('/api/refinement-status') ||
@@ -114,15 +109,17 @@ app.use((req, res, next) => {
     res.setHeader('Surrogate-Control', 'no-store');
   }
   
-  // Use raw body parser for webhook endpoints
-  if (
-    req.path === '/webhooks/lemonsqueezy' || 
-    req.path === '/api/webhooks/lemonsqueezy'
-  ) {
-    return rawBodyParser(req, res, next);
-  } 
-  // For all other routes, continue to next middleware
-  next();
+  // Apply the correct body parser based on the route
+  if (req.path === '/webhooks/lemonsqueezy' || 
+      req.path === '/api/webhooks/lemonsqueezy') {
+    // For webhooks, use raw body parser
+    express.raw({ type: 'application/json' })(req, res, next);
+  } else {
+    // For all other routes, use JSON parser
+    express.json({ limit: '10mb' })(req, res, () => {
+      express.urlencoded({ extended: true })(req, res, next);
+    });
+  }
 });
 
 // --------------------------------------
@@ -245,6 +242,9 @@ app.use(helmet({
         "conversions-config.reddit.com",
         "www.google.com",
         "www.google.co.il",
+        'https://google.com/pagead/*',
+        'https://google.com/ccm/*',
+        '*.google.com',
         "*.doubleclick.net",
         "*.googleadservices.com",
         "*.g.doubleclick.net",
@@ -297,6 +297,7 @@ const requiredEnvVars = [
   'LEMON_API_KEY',
   'LEMON_SQUEEZY_STORE_ID',
   'LEMON_SQUEEZY_VARIANT_ID',
+  'LEMON_SQUEEZY_VARIANT_ID_BUNDLE',
   'APP_URL',
 ];
 
@@ -583,7 +584,7 @@ app.post('/refine', async (req, res) => {
     // 5. Call the model again with the updated conversation
     // -------------------------------------------------------------------
     const refineResp = await openai.chat.completions.create({
-      model: "o1-mini",
+      model: "o4-mini",
       messages: newConversation,
     });
     logger.debug(`refineResp raw: ${JSON.stringify(refineResp, null, 2).slice(0,500)}...`);
@@ -703,7 +704,7 @@ app.post('/refine', async (req, res) => {
     const keywordsPrompt = `Extract the key: skills, qualifications, keywords, and optimization recommendations from this job description so we can pass ATS systems. Return them line-separated:\n\n"${jobDescription}"`;
     
     const keywordsResp = await openai.chat.completions.create({
-      model: "o1-mini",
+      model: "o4-mini",
       messages: [{ role: "user", content: keywordsPrompt }],
     });
     
@@ -734,7 +735,7 @@ app.post('/refine', async (req, res) => {
 
     // 5. Call the model with the messages
     const refineResp = await openai.chat.completions.create({
-      model: "o1-mini",
+      model: "o4-mini",
       messages: messages,
     });
     

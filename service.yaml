@@ -36,6 +36,11 @@ spec:
             secretKeyRef:
               name: LEMON_SQUEEZY_VARIANT_ID
               key: latest
+        - name: LEMON_SQUEEZY_VARIANT_ID_BUNDLE
+          valueFrom:
+            secretKeyRef:
+              name: LEMON_SQUEEZY_VARIANT_ID_BUNDLE
+              key: latest      
         - name: LEMON_API_KEY
           valueFrom:
             secretKeyRef:

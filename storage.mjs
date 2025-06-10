@@ -7,6 +7,28 @@ import { Storage } from '@google-cloud/storage';
 export const jobDataStorage = new Map();
 export const freePassUsage = new Map(); // For in-memory tracking
 
+// Add credit storage exports
+export const userCreditsStorage = new Map();
+
+export function getUserCredits(userId) {
+  return userCreditsStorage.get(userId) || 0;
+}
+
+export function addUserCredits(userId, credits) {
+  const current = getUserCredits(userId);
+  userCreditsStorage.set(userId, current + credits);
+  return current + credits;
+}
+
+export function deductUserCredit(userId) {
+  const current = getUserCredits(userId);
+  if (current > 0) {
+    userCreditsStorage.set(userId, current - 1);
+    return true;
+  }
+  return false;
+}
+
 // In-memory storage for free pass users (for Cloud Run)
 let inMemoryFreePassUsers = [];
 
@@ -15,6 +37,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const FREE_PASS_FILE = path.join(__dirname, 'data', 'free-passes.json');
 const FREE_PASS_USERS_FILE = path.join(__dirname, 'data', 'free-pass-users.json');
+const CREDITS_FILE = path.join(__dirname, 'data', 'user-credits.json');
 
 // Storage type from environment variable (memory or file)
 const DATA_STORAGE_TYPE = process.env.DATA_STORAGE_TYPE || 'memory';
@@ -22,10 +45,54 @@ const DATA_STORAGE_TYPE = process.env.DATA_STORAGE_TYPE || 'memory';
 // Log the storage type on startup
 console.log(`Free pass user data storage type: ${DATA_STORAGE_TYPE}`);
 
+// NOW we can define the init function since DATA_STORAGE_TYPE is available
+function initCreditsStorage() {
+  try {
+    if (DATA_STORAGE_TYPE !== 'memory') {
+      // Create data directory if it doesn't exist
+      const dataDirectory = path.join(__dirname, 'data');
+      if (!fs.existsSync(dataDirectory)) {
+        fs.mkdirSync(dataDirectory, { recursive: true });
+      }
+      
+      // Load existing credits if available
+      if (fs.existsSync(CREDITS_FILE)) {
+        const data = JSON.parse(fs.readFileSync(CREDITS_FILE, 'utf8'));
+        Object.entries(data).forEach(([userId, credits]) => {
+          userCreditsStorage.set(userId, credits);
+        });
+        console.log(`Loaded credits for ${userCreditsStorage.size} users`);
+      }
+    } else {
+      console.log('Using in-memory storage for user credits');
+    }
+  } catch (error) {
+    console.error('Error initializing credits storage:', error);
+  }
+}
+
+export function saveCreditsStorage() {
+  if (DATA_STORAGE_TYPE === 'memory') {
+    return;
+  }
+  
+  const data = {};
+  userCreditsStorage.forEach((credits, userId) => {
+    data[userId] = credits;
+  });
+  
+  try {
+    fs.writeFileSync(CREDITS_FILE, JSON.stringify(data, null, 2), 'utf8');
+  } catch (error) {
+    console.error('Error saving credits data:', error);
+  }
+}
+
 // Initialize Google Cloud Storage
 const storage = new Storage();
 const bucketName = process.env.STORAGE_BUCKET || 'cv-opt-user-data';
 let bucket;
+
 
 // Initialize bucket
 async function initBucket() {
@@ -226,10 +293,12 @@ export function getFreePassUserCount() {
 if (DATA_STORAGE_TYPE !== 'memory') {
   setInterval(() => {
     saveFreePassUsage();
+    saveCreditsStorage(); // Also save credits periodically
   }, 60000); // Save every minute
 }
 
-// Initialize when module is loaded
+// Initialize when module is loaded - MOVE TO THE VERY END
 initFreePassStorage();
+initCreditsStorage(); // Now this will work because DATA_STORAGE_TYPE is defined
 // Call this at startup
 initBucket();

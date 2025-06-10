@@ -88,6 +88,43 @@ window.addEventListener('message', function(event) {
     window.paymentCompleted = true;
     window.paymentSuccessHandled = true;
     
+    // ADD THIS NEW CODE HERE (after existing success handling):
+    // Check if this was a bundle purchase
+    if (event.data.bundleType === 'bundle' || event.data.credits) {
+        // Update credits display
+        const creditsDisplay = document.getElementById('credits-display');
+        const creditsCount = document.getElementById('credits-count');
+        
+        if (creditsDisplay && creditsCount) {
+            creditsDisplay.style.display = 'block';
+            creditsCount.textContent = event.data.credits || '10';
+        }
+        
+        // Show special notification for bundle purchase
+        if (typeof showNotification === 'function') {
+            showNotification('✅ 10 CV optimization credits added to your account!', 'success');
+        }
+        
+        // Update the message
+        messageElement.textContent = '✅ Credits added! You can now optimize 10 CVs.';
+        
+        // Show special bundle notification using the enhanced function
+        if (typeof showBundleSuccessNotification === 'function') {
+            showBundleSuccessNotification('You have 10 credits!<br>Start refining your CVs');
+        } else if (typeof showNotification === 'function') {
+            // Fallback to regular notification
+            showNotification('✅ 10 CV optimization credits added to your account!', 'success');
+        }
+        
+        // Update payment options display
+        if (typeof updatePaymentOptionsDisplay === 'function') {
+            updatePaymentOptionsDisplay(10);
+        }
+        
+        // Update the message
+        messageElement.textContent = '✅ Credits added! You can now optimize 10 CVs.';
+    }
+
     // Update UI
     const messageElement = document.getElementById('result-message');
     if (messageElement) {
@@ -477,7 +514,10 @@ async function handleCheckout(event) {
       throw new Error("No jobId returned from server");
     }
 
-    // Create checkout session
+    // In handleCheckout function, add bundle type to the request
+    const selectedPaymentType = document.querySelector('input[name="payment-type"]:checked').value;
+
+    // When creating checkout
     const response = await fetch(`/api/create-checkout?t=${timestamp}`, {
       method: 'POST',
       headers: { 
@@ -487,7 +527,8 @@ async function handleCheckout(event) {
       body: JSON.stringify({ 
         jobId,
         refinementLevel,
-        tabSessionId // Include this in the checkout request
+        tabSessionId,
+        bundleType: selectedPaymentType // Add this
       })
     });
     
@@ -495,8 +536,44 @@ async function handleCheckout(event) {
       throw new Error(`Failed to create checkout session: ${response.status}`);
     }
     
+    // Handle credit-based response
     const data = await response.json();
-    
+
+    if (data.useCredit === true) {
+      // Using credits instead of payment
+      messageElement.textContent = `✅ Using 1 credit. ${data.remainingCredits} credits remaining. Processing your CV...`;
+      
+      // Update credits display
+      document.getElementById('credits-count').textContent = data.remainingCredits;
+
+      // Update payment options display based on remaining credits
+      if (typeof updatePaymentOptionsDisplay === 'function') {
+        updatePaymentOptionsDisplay(data.remainingCredits);
+      }
+
+      // If credits are now 0, update the checkout button text
+      if (data.remainingCredits === 0) {
+        const checkoutButton = document.getElementById('checkout-button');
+        if (checkoutButton) {
+          checkoutButton.innerHTML = '<span class="button-icon">✨</span>Optimize My CV';
+        }
+      }
+      
+      // Mark payment as complete since we used a credit
+      window.paymentCompleted = true;
+      window.paymentSuccessHandled = true;
+      
+      // Start polling for refinement results
+      setTimeout(() => {
+        if (typeof pollRefinementStatus === 'function') {
+          window.checkoutCompleted = false;
+          pollRefinementStatus(jobId, tabSessionId);
+        }
+      }, 1000);
+      
+      return; // Exit early, no payment needed
+    }
+          
     // Handle free pass case
     if (data.freePass === true) {
       console.log("Free pass detected, showing user form instead of payment");
@@ -1110,6 +1187,40 @@ function pollRefinementStatus(jobId) {
       
       const data = await response.json();
       
+    // HANDLE BUNDLE PURCHASE STATUS
+    if (data.status === 'bundle_purchase') {
+      clearInterval(interval);
+      messageElement.textContent = '✅ 10 credits added to your account!';
+      hideSpinner();
+      
+      // Update credits display
+      fetch('/api/check-credits')
+        .then(response => response.json())
+        .then(creditsData => {
+          document.getElementById('credits-count').textContent = creditsData.credits;
+          document.getElementById('credits-display').style.display = 'block';
+          
+          // Update payment options display - ADD THIS
+          if (typeof updatePaymentOptionsDisplay === 'function') {
+            updatePaymentOptionsDisplay(creditsData.credits);
+          }
+        });
+      
+      // Show the enhanced bundle success notification - REPLACE THE OLD showNotification with:
+      if (typeof showBundleSuccessNotification === 'function') {
+        showBundleSuccessNotification('You have 10 credits!<br>Start refining your CVs');
+      } else if (typeof showNotification === 'function') {
+        // Fallback to regular notification
+        showNotification('✅ 10 CV optimization credits added to your account!', 'success');
+      }
+      
+      // Re-enable checkout button
+      checkoutButton.disabled = false;
+      checkoutButton.textContent = 'Optimize My CV';
+      
+      return;
+    }
+
       // Check for session mismatch
       if (data.status === 'wrong_tab') {
         clearInterval(interval);

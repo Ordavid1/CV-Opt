@@ -373,8 +373,32 @@
       <!-- PAYMENT SECTION -->
       <div class="payment-section">
         <div class="price-tag">
-          <div class="price">$1</div>
-          <div class="price-period">per CV</div>
+          <div class="price" id="selected-price">$1</div>
+          <div class="price-period" id="selected-description">per CV</div>
+        </div>
+        
+        <div class="payment-options">
+          <label class="payment-option">
+            <input type="radio" name="payment-type" value="single" checked>
+            <div class="option-content">
+              <span class="option-price">$1</span>
+              <span class="option-desc">Single optimization</span>
+            </div>
+          </label>
+          <label class="payment-option">
+            <input type="radio" name="payment-type" value="bundle">
+            <div class="option-content">
+              <span class="option-price">$5</span>
+              <span class="option-desc">10 optimizations</span>
+              <span class="option-badge">50% OFF!</span>
+            </div>
+          </label>
+        </div>
+
+        <!-- Credits display -->
+        <div id="credits-display" class="credits-display" style="display: none;">
+          <span class="credits-icon">💳</span>
+          <span class="credits-text">Credits remaining: <strong id="credits-count">0</strong></span>
         </div>
         
         <!-- Add this for free pass status -->
@@ -1255,7 +1279,64 @@
             checkResultsBtn.style.display = 'block';
           }
         };
+
+        // Check and display user credits
+        (async function checkUserCredits() {
+          try {
+            const response = await fetch('/api/check-credits');
+            if (response.ok) {
+              const data = await response.json();
+              
+              // ALWAYS show credits display, even if 0
+              const creditsDisplay = document.getElementById('credits-display');
+              const creditsCount = document.getElementById('credits-count');
+              
+              if (creditsDisplay && creditsCount) {
+                creditsDisplay.style.display = 'block'; // Always show
+                creditsCount.textContent = data.credits;
+                updatePaymentOptionsDisplay(data.credits);
+              }
+              
+              // Update checkout button text based on credits
+              const checkoutButton = document.getElementById('checkout-button');
+              if (checkoutButton) {
+                if (data.credits > 0) {
+                  checkoutButton.innerHTML = `<span class="button-icon">✨</span>Optimize My CV (${data.credits} credits available)`;
+                } else {
+                  checkoutButton.innerHTML = `<span class="button-icon">✨</span>Optimize My CV`;
+                }
+              }
+            }
+          } catch (error) {
+            console.error('Error checking credits:', error);
+            // Even on error, show the display with 0
+            const creditsDisplay = document.getElementById('credits-display');
+            if (creditsDisplay) {
+              creditsDisplay.style.display = 'block';
+              document.getElementById('credits-count').textContent = '0';
+              updatePaymentOptionsDisplay(0);
+            }
+          }
+        })();
+      
+      // Also add listener for payment type changes
+      const paymentOptions = document.querySelectorAll('input[name="payment-type"]');
+      paymentOptions.forEach(option => {
+        option.addEventListener('change', function() {
+          const priceTag = document.getElementById('selected-price');
+          const priceDesc = document.getElementById('selected-description');
+          
+          if (this.value === 'bundle') {
+            priceTag.textContent = '$5';
+            priceDesc.textContent = '10 optimizations';
+          } else {
+            priceTag.textContent = '$1';
+            priceDesc.textContent = 'per CV';
+          }
+        });
       });
+      
+    }); // End of existing DOMContentLoaded
 
       // Function to set the active step
       function setActiveStep(stepNum) {

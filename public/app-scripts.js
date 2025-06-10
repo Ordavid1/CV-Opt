@@ -56,6 +56,105 @@ document.addEventListener('DOMContentLoaded', function() {
       return originalPoll.call(this, jobId);
     }}
   
+/* ------------------------------------------------------
+ * BUNDLE NOTIFICATION AND CREDITS DISPLAY FUNCTIONS
+ * ------------------------------------------------------ */
+
+// Enhanced notification function for bundle purchases
+function showBundleSuccessNotification(message) {
+  const notification = document.getElementById('notification');
+  if (!notification) return;
+  
+  // Add special class for bundle success
+  notification.className = 'notification bundle-success';
+  notification.innerHTML = message;
+  notification.style.display = 'block';
+  
+  // Remove notification after animation completes
+  setTimeout(() => {
+    notification.style.display = 'none';
+    notification.className = 'notification'; // Reset class
+  }, 2000);
+}
+
+// Function to update payment options based on credits
+function updatePaymentOptionsDisplay(credits) {
+  const paymentSection = document.querySelector('.payment-section');
+  
+  if (credits > 0) {
+    // Add class to fade payment options
+    paymentSection.classList.add('has-credits');
+    
+    // Add or update credits message if not exists
+    let creditsMessage = paymentSection.querySelector('.credits-available-message');
+    if (!creditsMessage) {
+      creditsMessage = document.createElement('div');
+      creditsMessage.className = 'credits-available-message';
+      
+      // Insert after payment options
+      const paymentOptions = paymentSection.querySelector('.payment-options');
+      if (paymentOptions) {
+        paymentOptions.after(creditsMessage);
+      }
+    }
+    creditsMessage.textContent = `You have ${credits} credits available - no payment needed!`;
+    
+  } else {
+    // Remove class to show payment options normally
+    paymentSection.classList.remove('has-credits');
+  }
+}
+
+// Make functions globally available
+window.showBundleSuccessNotification = showBundleSuccessNotification;
+window.updatePaymentOptionsDisplay = updatePaymentOptionsDisplay;
+
+// Monitor credit usage during refinement
+document.addEventListener('DOMContentLoaded', function() {
+  // Override pollRefinementStatus to monitor credit changes
+  if (typeof window.pollRefinementStatus === 'function') {
+    const originalPoll = window.pollRefinementStatus;
+    
+    window.pollRefinementStatus = function(jobId) {
+      // Call the original function
+      originalPoll.call(this, jobId);
+      
+      // Set up credit monitoring
+      const creditCheckInterval = setInterval(async () => {
+        try {
+          const response = await fetch('/api/check-credits');
+          if (response.ok) {
+            const data = await response.json();
+            
+            // Update credits display
+            const creditsCount = document.getElementById('credits-count');
+            if (creditsCount) {
+              const previousCredits = parseInt(creditsCount.textContent);
+              creditsCount.textContent = data.credits;
+              
+              // If credits decreased, update payment options
+              if (data.credits !== previousCredits) {
+                updatePaymentOptionsDisplay(data.credits);
+              }
+            }
+            
+            // Stop checking when refinement is done
+            const spinner = document.getElementById('spinner');
+            if (!spinner || spinner.style.display === 'none') {
+              clearInterval(creditCheckInterval);
+            }
+          }
+        } catch (error) {
+          console.error('Error checking credits:', error);
+        }
+      }, 3000); // Check every 3 seconds
+      
+      // Clear interval after max time (5 minutes)
+      setTimeout(() => clearInterval(creditCheckInterval), 300000);
+    };
+  }
+});
+    
   /* ------------------------------------------------------
    * SECTION 1: ERROR HANDLING
    * Intercepts and suppresses common CSS errors
@@ -801,6 +900,16 @@ window.hideCheckoutModal = hideCheckoutModal;
     
     const doc = inputFrame.contentDocument;
     
+    // Add null check for doc.body
+    if (!doc.body) {
+      return false;
+    }
+    
+    // Check if listeners are already attached
+    if (doc.body.hasAttribute('data-has-save-listeners')) {
+      return true;
+    }
+    
     // Check if listeners are already attached
     if (doc.body.hasAttribute('data-has-save-listeners')) {
       return true;
@@ -910,7 +1019,5 @@ function improveSessionManagement() {
 
 // Call this function on page load
 document.addEventListener('DOMContentLoaded', improveSessionManagement);
-
-
   console.log("CV Optimizer scripts fully initialized");
 });
