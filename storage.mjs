@@ -3,30 +3,85 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { Storage } from '@google-cloud/storage';
+import { db } from './database.mjs';
 
 export const jobDataStorage = new Map();
 export const freePassUsage = new Map(); // For in-memory tracking
+export const orderToJobMapping = new Map();
 
 // Add credit storage exports
 export const userCreditsStorage = new Map();
 
-export function getUserCredits(userId) {
-  return userCreditsStorage.get(userId) || 0;
-}
-
-export function addUserCredits(userId, credits) {
-  const current = getUserCredits(userId);
-  userCreditsStorage.set(userId, current + credits);
-  return current + credits;
-}
-
-export function deductUserCredit(userId) {
-  const current = getUserCredits(userId);
-  if (current > 0) {
-    userCreditsStorage.set(userId, current - 1);
-    return true;
+export async function getUserCredits(userId) {
+  try {
+    // Check database first
+    if (db) {
+      const result = await db.get(
+        'SELECT credits FROM user_credits WHERE user_id = ?',
+        userId
+      );
+      if (result) {
+        return result.credits;
+      }
+    }
+    
+    // Fallback to in-memory storage
+    return userCreditsStorage.get(userId) || 0;
+  } catch (error) {
+    console.error('Error getting user credits:', error);
+    // Fallback to in-memory storage
+    return userCreditsStorage.get(userId) || 0;
   }
-  return false;
+}
+
+export async function addUserCredits(userId, credits) {
+  try {
+    await db.run(
+      `INSERT INTO user_credits (user_id, credits) 
+       VALUES (?, ?) 
+       ON CONFLICT(user_id) 
+       DO UPDATE SET credits = credits + ?, updated_at = CURRENT_TIMESTAMP`,
+      userId, credits, credits
+    );
+    
+    await db.run(
+      'INSERT INTO credit_transactions (user_id, amount, reason) VALUES (?, ?, ?)',
+      userId, credits, 'credit_purchase'
+    );
+    
+    return true;
+  } catch (error) {
+    console.error('Error adding user credits:', error);
+    return false;
+  }
+}
+
+export async function deductUserCredit(userId) {
+  try {
+    const current = await getUserCredits(userId);  // Add await
+    if (current > 0) {
+      // Update database
+      if (db) {
+        await db.run(
+          'UPDATE user_credits SET credits = credits - 1, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?',
+          userId
+        );
+        
+        await db.run(
+          'INSERT INTO credit_transactions (user_id, amount, reason) VALUES (?, ?, ?)',
+          userId, -1, 'credit_used'
+        );
+      }
+      
+      // Also update in-memory storage
+      userCreditsStorage.set(userId, current - 1);
+      return true;
+    }
+    return false;
+  } catch (error) {
+    console.error('Error deducting user credit:', error);
+    return false;
+  }
 }
 
 // In-memory storage for free pass users (for Cloud Run)

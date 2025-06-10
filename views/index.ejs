@@ -195,7 +195,9 @@
   }
 ]
 </script>
-      
+      <!-- CSRF Token -->
+      <meta name="csrf-token" content="<%= csrfToken %>">
+
   </head>
   <body>
     <!-- Google Tag Manager (noscript) -->
@@ -673,6 +675,14 @@
 
     <!-- CORE FUNCTIONALITY SCRIPTS -->
     <script nonce="<%= nonce %>">
+      // Get CSRF token from meta tag
+      function getCSRFToken() {
+        const token = document.querySelector('meta[name="csrf-token"]');
+        return token ? token.getAttribute('content') : '';
+      }
+      // Store CSRF token globally
+      const csrfToken = getCSRFToken();
+
       // Global conversation array for multi-turn conversation (initialized on page load)
       let conversation = [
         { role: "user", content: "Hello, I'd like to refine my CV. Are you ready?" }
@@ -1403,7 +1413,10 @@
         // Send to server for refinement
         fetch("/refine", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { 
+            "Content-Type": "application/json",
+            "X-CSRF-Token": csrfToken  // ADD THIS
+          },
           body: JSON.stringify({ conversation, jobUrl, cvHTML, refinementLevel }),
         })
         .then((response) => response.json())
@@ -1464,7 +1477,10 @@
           
           const response = await fetch('/api/refinement-status', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 
+              'Content-Type': 'application/json',
+              'X-CSRF-Token': csrfToken  // ADD THIS
+            },
             body: JSON.stringify({ jobId })
           });
 

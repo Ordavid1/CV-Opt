@@ -1,4 +1,11 @@
 document.addEventListener('DOMContentLoaded', function() {
+// Get CSRF token
+function getCSRFToken() {
+  const token = document.querySelector('meta[name="csrf-token"]');
+  return token ? token.getAttribute('content') : '';
+}
+const csrfToken = getCSRFToken();
+
   // Robust browser detection function
   function detectBrowser() {
     // Print full user agent for debugging
@@ -396,7 +403,10 @@ async function verifyPaymentWithBackend(jobId, tabSessionId) {
     // Check refinement status first
     const response = await fetch(`/api/refinement-status`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 
+        'Content-Type': 'application/json',
+        'X-CSRF-Token': csrfToken // Include CSRF token for security
+      },
       body: JSON.stringify({ jobId, tabSessionId })
     });
     
@@ -410,7 +420,11 @@ async function verifyPaymentWithBackend(jobId, tabSessionId) {
     
     // Try order status as backup
     try {
-      const orderResponse = await fetch(`/api/check-order-status?jobId=${jobId}&tabSessionId=${encodeURIComponent(tabSessionId)}`);
+    const orderResponse = await fetch(`/api/check-order-status?jobId=${jobId}&tabSessionId=${encodeURIComponent(tabSessionId)}`, {
+        headers: {
+         'X-CSRF-Token': csrfToken  // ADD HEADERS WITH CSRF
+         }
+    });
       if (orderResponse.ok) {
         const orderData = await orderResponse.json();
         if (orderData.status === 'paid') {
@@ -465,19 +479,24 @@ async function handleCheckout(event) {
                           Math.random().toString(36).substring(2);
     sessionStorage.setItem('tabSessionId', tabSessionId);
   
+    // In handleCheckout function, add bundle type to the request
+    const selectedPaymentType = document.querySelector('input[name="payment-type"]:checked').value;
+
     // Store the data with refinement level and tabSessionId
     const timestamp = new Date().getTime();
     const storeDataResponse = await fetch(`/api/store-job-data?t=${timestamp}`, {
       method: 'POST',
       headers: { 
         'Content-Type': 'application/json',
-        'Cache-Control': 'no-cache, no-store, must-revalidate'
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'X-CSRF-Token': csrfToken
       },
       body: JSON.stringify({ 
         jobUrl, 
         cvHTML, 
         refinementLevel,
-        tabSessionId  // Include tabSessionId here
+        tabSessionId,
+        bundleType: selectedPaymentType
       })
     });
   
@@ -514,15 +533,13 @@ async function handleCheckout(event) {
       throw new Error("No jobId returned from server");
     }
 
-    // In handleCheckout function, add bundle type to the request
-    const selectedPaymentType = document.querySelector('input[name="payment-type"]:checked').value;
-
     // When creating checkout
     const response = await fetch(`/api/create-checkout?t=${timestamp}`, {
       method: 'POST',
       headers: { 
         'Content-Type': 'application/json',
-        'Cache-Control': 'no-cache, no-store, must-revalidate' 
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'X-CSRF-Token': csrfToken  // Include CSRF token for security
       },
       body: JSON.stringify({ 
         jobId,
@@ -1176,7 +1193,8 @@ function pollRefinementStatus(jobId) {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
-          'Cache-Control': 'no-cache, no-store, must-revalidate'
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'X-CSRF-Token': csrfToken // Include CSRF token for security
         },
         body: JSON.stringify({ jobId, tabSessionId }) // Include tabSessionId
       });
@@ -1334,8 +1352,12 @@ function pollRefinementStatus(jobId) {
       
       const response = await fetch('/api/refinement-status', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ jobId })
+        headers: { 
+          'Content-Type': 'application/json',
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'X-CSRF-Token': csrfToken  // Include CSRF token for security
+        },
+        body: JSON.stringify({ jobId, tabSessionId})
       });
       
       if (!response.ok) return false;

@@ -17,9 +17,13 @@ import helmet from 'helmet';
 import crypto from 'crypto';
 import cors from 'cors';
 import rateLimit from 'express-rate-limit';
+import session from 'express-session';
+import { doubleCsrf } from "csrf-csrf";
+
 import { jobDataStorage } from './storage.mjs';
 import initLemonSqueezyRoutes from './lemonserver.mjs';
 import { createCVRefinementPrompt, createInitialGreeting } from './public/promptTemplates.mjs';
+import { initDatabase } from './database.mjs';
 
 dotenv.config();
 const __filename = fileURLToPath(import.meta.url);
@@ -53,28 +57,56 @@ const app = express();
 const PORT = process.env.PORT || 8080;
 const HOST = '0.0.0.0'; // Always bind to 0.0.0.0 for Cloud Run
 
+app.use(session({
+  secret: process.env.SESSION_SECRET || crypto.randomBytes(64).toString('hex'),
+  resave: false,
+  saveUninitialized: false,
+  cookie: { 
+    secure: process.env.NODE_ENV === 'production', 
+    httpOnly: true,
+    maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
+  }
+}));
+
+app.set('trust proxy', 1);
+
 // -------------------------------------------------------------------
 // Important middleware configuration for webhook handling
 // -------------------------------------------------------------------
 
-/* Create strict limiter for checkout and API endpoints
-const apiLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 10, // max 10 requests per windowMs
+const strictApiLimiter = rateLimit({
+  windowMs: 5 * 60 * 1000, // 5 minutes instead of 15
+  max: 10, // 10 requests per windowMs instead of 3
   standardHeaders: true,
   legacyHeaders: false,
-  message: 'Too many requests from this IP, please try again later.'
-}); 
+  message: 'Too many requests. Please try again later.',
+  keyGenerator: (req) => {
+    // Use session ID if available, otherwise use IP
+    return req.session?.userId || req.ip;
+  },
+  skip: (req) => {
+    // Skip rate limiting for bundle purchases
+    return req.body && req.body.bundleType === 'bundle';
+  }
+});
 
-// Apply to specific routes
-app.use('/api/store-job-data', apiLimiter);
-app.use('/api/create-checkout', apiLimiter);
-app.use('/refine', apiLimiter);
-*/
+const generalApiLimiter = rateLimit({
+  windowMs: 1 * 60 * 1000, // 1 minute
+  max: 20, // 20 requests per minute
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+// Apply strict limiter to sensitive endpoints
+app.use('/api/store-job-data', strictApiLimiter);
+app.use('/api/create-checkout', strictApiLimiter);
+app.use('/api/free-pass-submit', strictApiLimiter);
+app.use('/refine', strictApiLimiter);
+
+// Apply general limiter to other API endpoints
+app.use('/api/', generalApiLimiter);
 
 // Standard middleware for non-webhook routes
-
-
 // Updated CORS configuration
 app.use(cors({
   origin: '*',
@@ -87,11 +119,27 @@ app.use(cors({
 app.use(compression());
 
 // Add security headers
-app.use((_req, res, next) => {
+app.use((req, res, next) => {
+  // Generate request ID
+  req.id = crypto.randomBytes(16).toString('hex');
+  res.setHeader('X-Request-ID', req.id);
+
   res.setHeader('X-Frame-Options', 'SAMEORIGIN');
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('X-XSS-Protection', '1; mode=block');
   res.setHeader('Access-Control-Allow-Origin', '*');
+  // ADD: Additional security headers
+  res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+  res.setHeader('X-Permitted-Cross-Domain-Policies', 'none');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  
+  // Generate nonce for CSP
+  res.locals.nonce = crypto.randomBytes(16).toString('base64');
+  
+  // Make CSRF token available to views
+      // CSRF token is already set in res.locals by the middleware above
+      // No need to do anything here
+
   res.locals.nonce = crypto.randomBytes(16).toString('base64');
   next();
 });
@@ -288,6 +336,53 @@ app.use(helmet({
   crossOriginOpenerPolicy: false,
   crossOriginResourcePolicy: { policy: "cross-origin" }
 }));
+
+// Set up CSRF protection (where the old code was)
+const {
+  generateToken,
+  validateRequest,
+  doubleCsrfProtection
+} = doubleCsrf({
+  getSecret: () => process.env.CSRF_SECRET || crypto.randomBytes(32).toString('hex'),
+  cookieName: "x-csrf-token",
+  cookieOptions: {
+    httpOnly: true,
+    sameSite: "strict",
+    secure: process.env.NODE_ENV === "production"
+  },
+  getTokenFromRequest: (req) => {
+    // Get token from header or body
+    return req.headers['x-csrf-token'] || req.body._csrf;
+  }
+});
+
+// Apply CSRF protection middleware with webhook skip
+app.use((req, res, next) => {
+  // Skip CSRF for webhooks, GET requests, and internal refine calls
+  if (req.path.includes('/webhook') || 
+      req.method === 'GET' || 
+      (req.path === '/refine' && req.headers['x-internal-request'] === 'true')) {
+    
+    // For GET requests, generate token
+    if (req.method === 'GET') {
+      if (!req.session.csrfToken) {
+        req.session.csrfToken = crypto.randomBytes(32).toString('hex');
+      }
+      res.locals.csrfToken = req.session.csrfToken;
+    }
+    return next();
+  }
+  
+  // Validate token for other POST/PUT/DELETE requests
+  if (['POST', 'PUT', 'DELETE'].includes(req.method)) {
+    const token = req.headers['x-csrf-token'] || req.body._csrf;
+    if (!token || token !== req.session.csrfToken) {
+      return res.status(403).json({ error: 'Invalid CSRF token' });
+    }
+  }
+  
+  next();
+});
 
 // -------------------------------------------------------------------
 // Check environment variables
@@ -787,10 +882,10 @@ app.post('/refine', async (req, res) => {
         
         logger.info(`✅ Refinement results stored for jobId: ${jobId}`);
       } else {
-        logger.error("No jobId provided for storing results");
+      logger.error("No jobId provided for storing results");
       }
-      
       logger.info("Background processing completed successfully");
+      logger.info(`Stored data includes: refinedHTML length: ${cleanedReply.length}, changes: ${changesHtml ? 'yes' : 'no'}`);
 
       return {
         status: "success",
@@ -831,12 +926,30 @@ app.post('/refine', async (req, res) => {
   }
 }
 
+
+// -------------------------------------------------------------------
+// Initialize database and server
+// -------------------------------------------------------------------
+
 const server = http.createServer(app);
 
-server.listen(PORT, HOST, () => {
-  logger.info(`Server running at http://${HOST}:${PORT}`);
-  console.log(`Server is listening on port ${PORT}`);
-});
+async function startServer() {
+  try {
+    // Initialize database
+    logger.info('Initializing database...');
+    await initDatabase();
+    logger.info('Database initialized successfully');
+    
+    // Start server
+    server.listen(PORT, HOST, () => {
+      logger.info(`Server running at http://${HOST}:${PORT}`);
+      console.log(`Server is listening on port ${PORT}`);
+    });
+  } catch (error) {
+    logger.error('Failed to start server:', error);
+    process.exit(1);
+  }
+}
 
 server.on('error', (error) => {
   logger.error('Server error:', error.message);
@@ -845,6 +958,9 @@ server.on('error', (error) => {
     process.exit(1);
   }
 });
+
+// Start the server
+startServer();
 
 // Export the server and app for use in other parts of your code
 export { app, server };
