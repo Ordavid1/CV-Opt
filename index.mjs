@@ -73,6 +73,43 @@ app.use(session({
 app.set('trust proxy', 1);
 
 // -------------------------------------------------------------------
+// CSRF Protection Setup
+// -------------------------------------------------------------------
+// Add these two functions before your middleware
+function generateCSRFToken() {
+  const token = crypto.randomBytes(32).toString('hex');
+  const timestamp = Date.now();
+  const data = `${token}.${timestamp}`;
+  const signature = crypto
+    .createHmac('sha256', csrfSecret)
+    .update(data)
+    .digest('hex');
+  return `${data}.${signature}`;
+}
+
+function verifyCSRFToken(token) {
+  if (!token) return false;
+  
+  const parts = token.split('.');
+  if (parts.length !== 3) return false;
+  
+  const [tokenPart, timestamp, signature] = parts;
+  const data = `${tokenPart}.${timestamp}`;
+  
+  const expectedSignature = crypto
+    .createHmac('sha256', csrfSecret)
+    .update(data)
+    .digest('hex');
+    
+  if (signature !== expectedSignature) return false;
+  
+  const tokenAge = Date.now() - parseInt(timestamp);
+  if (tokenAge > 3600000) return false; // 1 hour expiry
+  
+  return true;
+}
+
+// -------------------------------------------------------------------
 // Important middleware configuration for webhook handling
 // -------------------------------------------------------------------
 
@@ -340,53 +377,27 @@ app.use(helmet({
 }));
 
 // Set up CSRF protection (where the old code was)
-const {
-  generateToken,
-  validateRequest,
-  doubleCsrfProtection
-} = doubleCsrf({
-  getSecret: () => process.env.CSRF_SECRET || crypto.randomBytes(32).toString('hex'),
-  cookieName: "x-csrf-token",
-  cookieOptions: {
-    httpOnly: true,
-    sameSite: "strict",
-    secure: process.env.NODE_ENV === "production"
-  },
-  getTokenFromRequest: (req) => {
-    // Get token from header or body
-    return req.headers['x-csrf-token'] || req.body._csrf;
-  }
-});
+const csrfSecret = process.env.CSRF_SECRET || crypto.randomBytes(32).toString('hex');
+logger.info(`CSRF Secret first 10 chars: ${csrfSecret.substring(0, 10)}...`);
 
 // Apply CSRF protection middleware with webhook skip
 app.use((req, res, next) => {
-  // Skip CSRF for webhooks, GET requests, and internal refine calls
+  // Skip CSRF for safe operations
   if (req.path.includes('/webhook') || 
       req.method === 'GET' || 
       (req.path === '/refine' && req.headers['x-internal-request'] === 'true')) {
-    
-    // For GET requests, generate token
-    if (req.method === 'GET') {
-      if (!req.session.csrfToken) {
-        req.session.csrfToken = crypto.randomBytes(32).toString('hex');
-      }
-      res.locals.csrfToken = req.session.csrfToken;
-    }
     return next();
   }
   
-  // Validate token for other POST/PUT/DELETE requests
-if (['POST', 'PUT', 'DELETE'].includes(req.method)) {
-  const token = req.headers['x-csrf-token'] || req.body._csrf;
-  const sessionToken = req.session?.csrfToken;
-  
-  logger.info(`CSRF Check - Path: ${req.path}, Token: ${token?.substring(0, 10)}..., Session Token: ${sessionToken?.substring(0, 10)}...`);
-  
-  if (!token || token !== sessionToken) {
-    logger.error(`CSRF token mismatch - Expected: ${sessionToken}, Got: ${token}`);
-    return res.status(403).json({ error: 'Invalid CSRF token' });
+  // Validate token for POST/PUT/DELETE requests
+  if (['POST', 'PUT', 'DELETE'].includes(req.method)) {
+    const token = req.headers['x-csrf-token'] || req.body._csrf;
+    
+    if (!verifyCSRFToken(token)) {
+      logger.error(`Invalid CSRF token for path: ${req.path}`);
+      return res.status(403).json({ error: 'Invalid CSRF token' });
+    }
   }
-}
   
   next();
 });
@@ -483,21 +494,17 @@ app.get('/health', (_req, res) => {
 });
 
 
-app.get('/', (req, res, next) => {
+app.get('/', (_req, res, next) => {
   const nonce = crypto.randomBytes(16).toString('base64');
+  const csrfToken = generateCSRFToken(); // Use the new stateless token
   
-  // Generate CSRF token if not exists
-  if (!req.session.csrfToken) {
-    req.session.csrfToken = crypto.randomBytes(32).toString('hex');
-  }
-  
-  logger.info("Serving index.ejs with CSRF token");
+  logger.info("Serving index.ejs with stateless CSRF token");
   
   try {
     res.render('index', { 
       nonce,
-      csrfToken: req.session.csrfToken, // Pass the session token
-      lemonsqueezyVariantId: process.env.LEMON_SQUEEZY_VARIANT_ID || '703669',
+      csrfToken, // This is now stateless
+      lemonsqueezyVariantId: process.env.LEMON_SQUEEZY_VARIANT_ID,
       appUrl: process.env.APP_URL || `http://${HOST}:${PORT}`
     });
   } catch (error) {

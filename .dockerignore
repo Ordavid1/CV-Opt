@@ -71,3 +71,17 @@ secret/
 data/
 free-passes.json
 free-pass-users.json
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Database journals
+*.db-journal
+*.db-wal
+*.db-shm
+
+# Backup files
+*.db.backup
+*.sql.backup

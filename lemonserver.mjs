@@ -124,6 +124,23 @@ const userRateLimits = new Map(); // Track request counts per user
 export default function initLemonSqueezyRoutes(app, logger) {
 // 1. Enhanced store-job-data endpoint with better logging
 app.post('/api/store-job-data', express.json(), (req, res) => {
+    // Debug logging
+    // Production Debug
+    logger.info(`=== PRODUCTION DEBUG ===`);
+    logger.info(`NODE_ENV: ${process.env.NODE_ENV}`);
+    logger.info(`Request reached store-job-data handler`);
+    logger.info(`Has body: ${!!req.body}`);
+    logger.info(`Body is empty: ${JSON.stringify(req.body) === '{}'}`);
+    logger.info(`Headers: ${JSON.stringify(req.headers)}`);
+    logger.info(`=== END PRODUCTION DEBUG ===`);
+    // CSRF Debug
+    logger.info("=== CSRF DEBUG ===");
+    logger.info(`Session ID: ${req.sessionID}`);
+    logger.info(`Session CSRF Token: ${req.session?.csrfToken}`);
+    logger.info(`Header CSRF Token: ${req.headers['x-csrf-token']}`);
+    logger.info(`Body CSRF Token: ${req.body._csrf}`);
+    logger.info(`Session exists: ${!!req.session}`);
+    logger.info("=== END DEBUG ===");
   try {
     logger.info("Storing job data before checkout");
     logger.debug(`Direct body access: ${JSON.stringify(req.body)}`);

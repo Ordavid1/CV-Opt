@@ -41,3 +41,17 @@ free-pass-users.json
 # Logs
 logs/
 *.log
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Database journals
+*.db-journal
+*.db-wal
+*.db-shm
+
+# Backup files
+*.db.backup
+*.sql.backup

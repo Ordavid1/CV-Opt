@@ -64,3 +64,17 @@ troubleshoot-cloud-run.sh
 stored.txt
 stored.txt.pub
 client_secret_677215866855-vht77a6qnlia1n3vnbngj3s0jh6rjbvm.apps.googleusercontent.com.json
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Database journals
+*.db-journal
+*.db-wal
+*.db-shm
+
+# Backup files
+*.db.backup
+*.sql.backup
