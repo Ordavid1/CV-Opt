@@ -410,7 +410,6 @@ const requiredEnvVars = [
   'LEMON_API_KEY',
   'LEMON_SQUEEZY_STORE_ID',
   'LEMON_SQUEEZY_VARIANT_ID',
-  'LEMON_SQUEEZY_VARIANT_ID_BUNDLE',
   'APP_URL',
 ];
 
@@ -953,13 +952,16 @@ app.post('/refine', async (req, res) => {
 // -------------------------------------------------------------------
 
 const server = http.createServer(app);
-
 async function startServer() {
   try {
-    // Initialize database
-    logger.info('Initializing database...');
-    await initDatabase();
-    logger.info('Database initialized successfully');
+    // Skip database when using memory storage
+    if (process.env.DATA_STORAGE_TYPE !== 'memory') {
+      logger.info('Initializing database...');
+      await initDatabase();
+      logger.info('Database initialized successfully');
+    } else {
+      logger.info('Using memory storage, skipping SQLite database');
+    }
     
     // Start server
     server.listen(PORT, HOST, () => {
