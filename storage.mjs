@@ -3,14 +3,12 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { Storage } from '@google-cloud/storage';
 import { db } from './database.mjs';
+import { promises as fs } from 'fs';
 
 export const jobDataStorage = new Map();
 export const freePassUsage = new Map(); // For in-memory tracking
 export const orderToJobMapping = new Map();
 export const userCreditsStorage = new Map();
-
-import { promises as fs } from 'fs';
-import path from 'path';
 
 // Create a data directory in /tmp (persists during container lifetime)
 const DATA_DIR = '/tmp/cv-opt-data';
