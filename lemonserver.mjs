@@ -123,7 +123,7 @@ async function sendVerificationEmail(email, token) {
 const userRateLimits = new Map(); // Track request counts per user
 export default function initLemonSqueezyRoutes(app, logger) {
 // 1. Enhanced store-job-data endpoint with better logging
-app.post('/api/store-job-data', express.json(), (req, res) => {
+app.post('/api/store-job-data', express.json(), async (req, res) => {
     // Debug logging
     // Production Debug
     logger.info(`=== PRODUCTION DEBUG ===`);
@@ -202,14 +202,14 @@ app.post('/api/store-job-data', express.json(), (req, res) => {
     const jobId = crypto.randomBytes(16).toString('hex');
     
     // Store the data using jobId as the primary key
-    jobDataStorage.set(jobId, { 
+    await persistJobData(jobId, { 
       jobId,
       jobUrl, 
       cvHTML,
       refinementLevel: finalLevel,
       tabSessionId: tabSessionId || Math.random().toString(36).substring(2),
       userId: userId,
-      bundleType: bundleType, // Store this too for later reference
+      bundleType: bundleType,
       createdAt: new Date().toISOString(),
       checkoutPending: true,
       lastUpdated: new Date().toISOString()
@@ -247,7 +247,7 @@ app.post('/api/create-checkout', express.json(), async (req, res) => {
     logger.info(`Payment type selected: ${bundleType}`);
 
     // Find the entry by jobId
-    const jobData = jobDataStorage.get(jobId);
+    const jobData = await loadJobData(jobId);
     
     if (!jobData) {
       logger.error(`No job data found for Job ID: ${jobId}`);
@@ -282,7 +282,7 @@ app.post('/api/create-checkout', express.json(), async (req, res) => {
       // IMPORTANT: Trigger refinement process for credit usage
       try {
         // Get the job data
-        const jobData = jobDataStorage.get(jobId);
+        const jobData = await loadJobData(jobId);
         if (!jobData || !jobData.jobUrl || !jobData.cvHTML) {
           throw new Error('Missing job data for refinement');
         }
@@ -619,7 +619,7 @@ app.post('/webhooks/lemonsqueezy', express.raw({ type: 'application/json' }), as
         
         // If we still don't have userId but have a bundle, extract from most recent job
         if (bundleType === 'bundle' && !userId && jobId) {
-          const jobData = jobDataStorage.get(jobId);
+          const jobData = await loadJobData(jobId);
           if (jobData && jobData.userId) {
             userId = jobData.userId;
             logger.info(`Extracted userId from job data: ${userId.substring(0, 8)}...`);
@@ -628,7 +628,7 @@ app.post('/webhooks/lemonsqueezy', express.raw({ type: 'application/json' }), as
 
         // If we still don't have userId, try to extract it from the stored job data
         if (!userId && jobId) {
-          const jobData = jobDataStorage.get(jobId);
+          const jobData = await loadJobData(jobId);
           if (jobData) {
             // The userId might be stored in the job data from the checkout creation
             userId = jobData.userId;
@@ -667,7 +667,7 @@ app.post('/webhooks/lemonsqueezy', express.raw({ type: 'application/json' }), as
             
             // Use the most recent jobId
             jobId = allJobIds[0];
-            const jobData = jobDataStorage.get(jobId);
+            const jobData = await loadJobData(jobId);
             refinementLevel = jobData?.refinementLevel || 5;
             
             // EXTRACT userId FROM JOB DATA - ADD THIS
@@ -691,7 +691,7 @@ app.post('/webhooks/lemonsqueezy', express.raw({ type: 'application/json' }), as
           saveCreditsStorage();
 
           if (jobId) {
-            const existingData = jobDataStorage.get(jobId) || {};
+            const existingData = await loadJobData(jobId) || {};
             jobDataStorage.set(jobId, {
               ...existingData,
               isBundlePurchase: true,
@@ -717,7 +717,7 @@ app.post('/webhooks/lemonsqueezy', express.raw({ type: 'application/json' }), as
         }
 
         // Find job data by jobId
-        const jobData = jobDataStorage.get(jobId);
+        const jobData = await loadJobData(jobId);
         
         if (!jobData) {
           logger.error(`❌ No job data found for jobId: ${jobId}`);
@@ -820,7 +820,7 @@ app.post('/api/refinement-status', express.json(), async (req, res) => {
     logger.info(`Checking refinement status for jobId: ${jobId} with tabSessionId: ${tabSessionId || 'not provided'}`);
     
     // Get job data directly by jobId
-    const jobData = jobDataStorage.get(jobId);
+    const jobData = await loadJobData(jobId);
         logger.info(`📊 Job data found: ${jobData ? 'YES' : 'NO'}`);
 
     if (!jobData) {
@@ -888,7 +888,7 @@ app.post('/api/get-job-data', express.json(), async (req, res) => {
     logger.info(`Getting job data for jobId: ${jobId}`);
     
     // Get job data directly by jobId
-    const jobData = jobDataStorage.get(jobId);
+    const jobData = await loadJobData(jobId);
     
     if (!jobData) {
       logger.info(`No data found for jobId: ${jobId}`);
@@ -1006,7 +1006,7 @@ app.post('/api/free-pass-submit', express.json(), async (req, res) => {
     logger.info(`Free pass user submitted: ${email} (${firstName} ${lastName})`);
     
     // Find the job data
-    const jobData = jobDataStorage.get(jobId);
+    const jobData = await loadJobData(jobId);
     
     if (!jobData) {
       logger.error(`No job data found for job ID: ${jobId}`);

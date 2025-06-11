@@ -20,7 +20,7 @@ import rateLimit from 'express-rate-limit';
 import session from 'express-session';
 import { doubleCsrf } from "csrf-csrf";
 
-import { jobDataStorage } from './storage.mjs';
+import { jobDataStorage, loadJobData, persistJobData } from './storage.mjs';
 import initLemonSqueezyRoutes from './lemonserver.mjs';
 import { createCVRefinementPrompt, createInitialGreeting } from './public/promptTemplates.mjs';
 import { initDatabase } from './database.mjs';
@@ -383,7 +383,7 @@ app.use(helmet({
 }));
 
 // Set up CSRF protection (where the old code was)
-const csrfSecret = process.env.CSRF_SECRET || crypto.randomBytes(32).toString('hex');
+const csrfSecret = process.env.CSRF_SECRET || 'use-a-fixed-secret-here-for-fallback';
 logger.info(`CSRF Secret first 10 chars: ${csrfSecret.substring(0, 10)}...`);
 
 // Apply CSRF protection middleware with webhook skip
@@ -629,13 +629,13 @@ app.post('/refine', async (req, res) => {
 
     // Store with jobId as the key, including tabSessionId
     if (jobId) {
-      const existingData = jobDataStorage.get(jobId) || {};
-      jobDataStorage.set(jobId, { 
+      const existingData = await loadJobData(jobId) || {};
+      await persistJobData(jobId, { 
         ...existingData,
         jobUrl,
         cvHTML,
         refinementLevel: level,
-        tabSessionId, // Store the tabSessionId with the job data
+        tabSessionId,
       });
       logger.info(`✅ Updated job data for jobId: ${jobId} with refinement level: ${level} and tabSessionId: ${tabSessionId}`);
     }

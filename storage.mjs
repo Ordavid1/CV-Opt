@@ -8,9 +8,81 @@ import { db } from './database.mjs';
 export const jobDataStorage = new Map();
 export const freePassUsage = new Map(); // For in-memory tracking
 export const orderToJobMapping = new Map();
-
-// Add credit storage exports
 export const userCreditsStorage = new Map();
+
+import { promises as fs } from 'fs';
+import path from 'path';
+
+// Create a data directory in /tmp (persists during container lifetime)
+const DATA_DIR = '/tmp/cv-opt-data';
+
+async function ensureDataDir() {
+  try {
+    await fs.mkdir(DATA_DIR, { recursive: true });
+  } catch (error) {
+    console.error('Error creating data directory:', error);
+  }
+}
+
+// Initialize data directory
+ensureDataDir();
+
+// Persist job data to disk
+export async function persistJobData(jobId, data) {
+  try {
+    const filePath = path.join(DATA_DIR, `job-${jobId}.json`);
+    await fs.writeFile(filePath, JSON.stringify(data), 'utf8');
+    jobDataStorage.set(jobId, data); // Also keep in memory for fast access
+  } catch (error) {
+    console.error('Error persisting job data:', error);
+  }
+}
+
+// Load job data from disk
+export async function loadJobData(jobId) {
+  try {
+    // First check memory
+    if (jobDataStorage.has(jobId)) {
+      return jobDataStorage.get(jobId);
+    }
+    
+    // Then check disk
+    const filePath = path.join(DATA_DIR, `job-${jobId}.json`);
+    const data = await fs.readFile(filePath, 'utf8');
+    const parsed = JSON.parse(data);
+    
+    // Cache in memory
+    jobDataStorage.set(jobId, parsed);
+    return parsed;
+  } catch (error) {
+    console.error('Error loading job data:', error);
+    return null;
+  }
+}
+
+// Cleanup old job files (call periodically)
+export async function cleanupOldJobs() {
+  try {
+    const files = await fs.readdir(DATA_DIR);
+    const now = Date.now();
+    const ONE_DAY = 24 * 60 * 60 * 1000;
+    
+    for (const file of files) {
+      if (file.startsWith('job-')) {
+        const filePath = path.join(DATA_DIR, file);
+        const stats = await fs.stat(filePath);
+        if (now - stats.mtimeMs > ONE_DAY) {
+          await fs.unlink(filePath);
+        }
+      }
+    }
+  } catch (error) {
+    console.error('Error cleaning up old jobs:', error);
+  }
+}
+
+// Run cleanup every hour
+setInterval(cleanupOldJobs, 60 * 60 * 1000);
 
 export async function getUserCredits(userId) {
   try {
