@@ -56,7 +56,7 @@ gcloud run deploy $SERVICE_NAME \
     --set-env-vars="NODE_ENV=production,DATA_STORAGE_TYPE=memory,STORAGE_BUCKET=cv-opt-user-data" \
     --timeout=300 \
     --min-instances=1 \
-    --max-instances=100 \
+    --max-instances=10 \
     --cpu=1 \
     --memory=512Mi \
     --allow-unauthenticated

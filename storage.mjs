@@ -429,3 +429,4 @@ initFreePassStorage();
 initCreditsStorage(); // Now this will work because DATA_STORAGE_TYPE is defined
 // Call this at startup
 initBucket();
+export { persistJobData, loadJobData };

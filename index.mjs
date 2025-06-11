@@ -20,7 +20,7 @@ import rateLimit from 'express-rate-limit';
 import session from 'express-session';
 import { doubleCsrf } from "csrf-csrf";
 
-import { jobDataStorage, loadJobData, persistJobData } from './storage.mjs';
+import { jobDataStorage, hasUsedFreePass, markFreePassUsed, saveFreePassUserInfo, getFreePassUsers, getFreePassUserCount, getUserCredits, addUserCredits, deductUserCredit, saveCreditsStorage, orderToJobMapping, persistJobData, loadJobData } from './storage.mjs';
 import initLemonSqueezyRoutes from './lemonserver.mjs';
 import { createCVRefinementPrompt, createInitialGreeting } from './public/promptTemplates.mjs';
 import { initDatabase } from './database.mjs';

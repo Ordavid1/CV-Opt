@@ -3,19 +3,7 @@ import express from 'express';
 import crypto from 'crypto';
 import nodemailer from 'nodemailer';
 
-import { 
-  jobDataStorage, 
-  hasUsedFreePass, 
-  markFreePassUsed,
-  saveFreePassUserInfo,
-  getFreePassUsers,
-  getFreePassUserCount,
-  getUserCredits,
-  addUserCredits,
-  deductUserCredit,
-  saveCreditsStorage,
-  orderToJobMapping
-} from './storage.mjs';
+import { jobDataStorage, hasUsedFreePass, markFreePassUsed, saveFreePassUserInfo, getFreePassUsers, getFreePassUserCount, getUserCredits, addUserCredits, deductUserCredit, saveCreditsStorage, orderToJobMapping, persistJobData, loadJobData } from './storage.mjs';
 
 const processedWebhooks = new Set();
 
