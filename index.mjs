@@ -78,6 +78,27 @@ app.use(session({
 
 app.set('trust proxy', 1);
 
+// Add this helper function at the top of index.mjs
+async function fetchWithTimeout(url, options = {}, timeout = 30000) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeout);
+  
+  try {
+    const response = await fetch(url, {
+      ...options,
+      signal: controller.signal
+    });
+    clearTimeout(timeoutId);
+    return response;
+  } catch (error) {
+    clearTimeout(timeoutId);
+    if (error.name === 'AbortError') {
+      throw new Error(`Request timed out after ${timeout}ms`);
+    }
+    throw error;
+  }
+}
+
 // -------------------------------------------------------------------
 // CSRF Protection Setup
 // -------------------------------------------------------------------
@@ -663,12 +684,20 @@ app.post('/refine', async (req, res) => {
       return; // Stop further execution of this handler
     }
 
+    if (jobData.status === 'failed') {
+    return res.json({
+      status: 'failed',
+      error: jobData.error || 'Refinement process failed',
+      message: 'The refinement process encountered an error. Please try again.'
+      });
+    }
+
     // For normal user-initiated calls, continue with synchronous processing
     // -------------------------------------------------------------------
     // 1. Fetch the job page
     // -------------------------------------------------------------------
     logger.info("Fetching job description page...");
-    const jobResponse = await fetch(jobUrl);
+    const jobResponse = await fetchWithTimeout(jobUrl, {}, 30000); // 30 second timeout
     logger.debug(`Job page fetch status: ${jobResponse.status}`);
     if (!jobResponse.ok) {
       throw new Error('Failed to fetch the job description page.');
@@ -824,8 +853,18 @@ app.post('/refine', async (req, res) => {
       
     // 1. Fetch the job page
     logger.info("Background: Fetching job description page...");
-    const jobResponse = await fetch(jobUrl);
-    if (!jobResponse.ok) {
+    const jobResponse = await fetchWithTimeout(jobUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.5',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'DNT': '1',
+        'Connection': 'keep-alive',
+        'Upgrade-Insecure-Requests': '1'
+      }
+    }, 30000);
+      if (!jobResponse.ok) {
       throw new Error('Failed to fetch the job description page.');
     }
     
@@ -961,9 +1000,22 @@ app.post('/refine', async (req, res) => {
       };
     }
 
-  } catch (err) {
-    logger.error(`❌ Background processing failed: ${err.message}`);
-    throw err;
+  } catch (error) {
+    logger.error(`Background refinement failed for jobId ${jobId}: ${error.message}`);
+    logger.error(error.stack);
+    
+    // Save error state to storage
+    if (jobId) {
+      const existingData = await loadJobData(jobId) || {};
+      await persistJobData(jobId, {
+        ...existingData,
+        status: 'failed',
+        error: error.message,
+        failedAt: new Date().toISOString()
+      });
+    }
+    
+    throw error;
   }
 }
 
