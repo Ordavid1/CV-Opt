@@ -1,5 +1,4 @@
 // Modified storage.mjs with in-memory option for Cloud Run
-import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { Storage } from '@google-cloud/storage';
