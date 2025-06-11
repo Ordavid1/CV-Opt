@@ -109,8 +109,9 @@ function verifyCSRFToken(token) {
     
   if (signature !== expectedSignature) return false;
   
+  // Increase token expiry to 24 hours for better UX
   const tokenAge = Date.now() - parseInt(timestamp);
-  if (tokenAge > 3600000) return false; // 1 hour expiry
+  if (tokenAge > 24 * 60 * 60 * 1000) return false; // 24 hours
   
   return true;
 }
@@ -383,7 +384,7 @@ app.use(helmet({
 }));
 
 // Set up CSRF protection (where the old code was)
-const csrfSecret = process.env.CSRF_SECRET || 'use-a-fixed-secret-here-for-fallback';
+const csrfSecret = process.env.CSRF_SECRET || crypto.randomBytes(32).toString('hex');
 logger.info(`CSRF Secret first 10 chars: ${csrfSecret.substring(0, 10)}...`);
 
 // Apply CSRF protection middleware with webhook skip
@@ -396,16 +397,22 @@ app.use((req, res, next) => {
     logger.info(`Token first 20 chars: ${req.headers['x-csrf-token']?.substring(0, 20)}...`);
     logger.info(`Token verification would return: ${verifyCSRFToken(req.headers['x-csrf-token'])}`);
   }
-  // Skip CSRF for safe operations
+  // Skip CSRF for safe operations and internal requests
   if (req.path.includes('/webhook') || 
       req.method === 'GET' || 
-      (req.path === '/refine' && req.headers['x-internal-request'] === 'true')) {
+      req.headers['x-internal-request'] === 'true' ||
+      req.path.includes('/health')) {
     return next();
   }
   
-  // Validate token for POST/PUT/DELETE requests
+  // For POST/PUT/DELETE requests
   if (['POST', 'PUT', 'DELETE'].includes(req.method)) {
     const token = req.headers['x-csrf-token'] || req.body._csrf;
+    
+    // Log for debugging (remove in production)
+    if (req.path === '/api/store-job-data' || req.path === '/api/get-job-data') {
+      logger.info(`CSRF Check - Path: ${req.path}, Has Token: ${!!token}`);
+    }
     
     if (!verifyCSRFToken(token)) {
       logger.error(`Invalid CSRF token for path: ${req.path}`);
