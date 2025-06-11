@@ -426,4 +426,5 @@ initFreePassStorage();
 initCreditsStorage(); // Now this will work because DATA_STORAGE_TYPE is defined
 // Call this at startup
 initBucket();
-export { persistJobData, loadJobData };
+// Export the bucket for use in other modules
+export { bucket, DATA_STORAGE_TYPE };
