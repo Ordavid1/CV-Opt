@@ -6,9 +6,88 @@ import { Storage } from '@google-cloud/storage';
 
 export const jobDataStorage = new Map();
 export const freePassUsage = new Map(); // For in-memory tracking
-
-// Add credit storage exports
 export const userCreditsStorage = new Map();
+
+// In-memory storage for free pass users (for Cloud Run)
+let inMemoryFreePassUsers = [];
+
+// Get directory path
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const FREE_PASS_FILE = path.join(__dirname, 'data', 'free-passes.json');
+const FREE_PASS_USERS_FILE = path.join(__dirname, 'data', 'free-pass-users.json');
+const CREDITS_FILE = path.join(__dirname, 'data', 'user-credits.json');
+
+// Storage type from environment variable (memory or file)
+const DATA_STORAGE_TYPE = process.env.DATA_STORAGE_TYPE || 'memory';
+
+// Initialize Google Cloud Storage
+const storage = new Storage();
+const bucketName = process.env.STORAGE_BUCKET || 'cv-opt-user-data';
+let bucket;
+
+// Log the storage type on startup
+console.log(`Free pass user data storage type: ${DATA_STORAGE_TYPE}`);
+
+// Initialize bucket
+async function initBucket() {
+  try {
+    bucket = storage.bucket(bucketName);
+    // Check if bucket exists, create if not
+    const [exists] = await bucket.exists();
+    if (!exists && process.env.NODE_ENV === 'production') {
+      await storage.createBucket(bucketName);
+      console.log(`Bucket ${bucketName} created.`);
+    }
+    console.log(`Cloud Storage bucket initialized: ${bucketName}`);
+  } catch (error) {
+    console.error('Error initializing bucket:', error);
+  }
+}
+
+// Enhanced job storage functions that respect DATA_STORAGE_TYPE
+export async function setJobData(jobId, data) {
+  // Always store in memory for fast access
+  jobDataStorage.set(jobId, data);
+  
+  // If using cloud storage, also persist there
+  if (DATA_STORAGE_TYPE === 'cloud-storage' && bucket) {
+    try {
+      const file = bucket.file(`jobs/${jobId}.json`);
+      await file.save(JSON.stringify(data), {
+        contentType: 'application/json',
+      });
+      console.log(`Job data persisted to Cloud Storage: ${jobId}`);
+    } catch (error) {
+      console.error(`Error saving job data to Cloud Storage: ${error.message}`);
+    }
+  }
+}
+
+export async function getJobData(jobId) {
+  // Try memory first
+  let data = jobDataStorage.get(jobId);
+  
+  // If not in memory and using cloud storage, try to load it
+  if (!data && DATA_STORAGE_TYPE === 'cloud-storage' && bucket) {
+    try {
+      const file = bucket.file(`jobs/${jobId}.json`);
+      const [exists] = await file.exists();
+      
+      if (exists) {
+        const [content] = await file.download();
+        data = JSON.parse(content.toString());
+        // Cache in memory
+        jobDataStorage.set(jobId, data);
+        console.log(`Job data loaded from Cloud Storage: ${jobId}`);
+      }
+    } catch (error) {
+      console.error(`Error loading job data from Cloud Storage: ${error.message}`);
+    }
+  }
+  
+  return data;
+}
 
 export function getUserCredits(userId) {
   return userCreditsStorage.get(userId) || 0;
@@ -28,22 +107,6 @@ export function deductUserCredit(userId) {
   }
   return false;
 }
-
-// In-memory storage for free pass users (for Cloud Run)
-let inMemoryFreePassUsers = [];
-
-// Get directory path
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const FREE_PASS_FILE = path.join(__dirname, 'data', 'free-passes.json');
-const FREE_PASS_USERS_FILE = path.join(__dirname, 'data', 'free-pass-users.json');
-const CREDITS_FILE = path.join(__dirname, 'data', 'user-credits.json');
-
-// Storage type from environment variable (memory or file)
-const DATA_STORAGE_TYPE = process.env.DATA_STORAGE_TYPE || 'memory';
-
-// Log the storage type on startup
-console.log(`Free pass user data storage type: ${DATA_STORAGE_TYPE}`);
 
 // NOW we can define the init function since DATA_STORAGE_TYPE is available
 function initCreditsStorage() {
@@ -85,27 +148,6 @@ export function saveCreditsStorage() {
     fs.writeFileSync(CREDITS_FILE, JSON.stringify(data, null, 2), 'utf8');
   } catch (error) {
     console.error('Error saving credits data:', error);
-  }
-}
-
-// Initialize Google Cloud Storage
-const storage = new Storage();
-const bucketName = process.env.STORAGE_BUCKET || 'cv-opt-user-data';
-let bucket;
-
-
-// Initialize bucket
-async function initBucket() {
-  try {
-    bucket = storage.bucket(bucketName);
-    // Check if bucket exists, create if not
-    const [exists] = await bucket.exists();
-    if (!exists && process.env.NODE_ENV === 'production') {
-      await storage.createBucket(bucketName);
-      console.log(`Bucket ${bucketName} created.`);
-    }
-  } catch (error) {
-    console.error('Error initializing bucket:', error);
   }
 }
 

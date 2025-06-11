@@ -775,7 +775,7 @@ app.post('/refine', async (req, res) => {
         const existingData = jobDataStorage.get(jobId) || {};
         
         // Store results with all data in one place
-        jobDataStorage.set(jobId, {
+        await jobDataStorageCloud.set(jobId, {
           ...existingData,
           jobUrl,
           cvHTML,
@@ -807,7 +807,7 @@ app.post('/refine', async (req, res) => {
       // Still store the result without changes
       if (jobId) {
         const existingData = jobDataStorage.get(jobId) || {};
-        jobDataStorage.set(jobId, {
+        await jobDataStorageCloud.set(jobId, {
           ...existingData,
           jobUrl,
           cvHTML,
