@@ -975,13 +975,13 @@ app.post('/refine', async (req, res) => {
 const server = http.createServer(app);
 async function startServer() {
   try {
-    // Skip database when using memory storage
-    if (process.env.DATA_STORAGE_TYPE !== 'memory') {
+    // Skip database when using cloud storage
+    if (process.env.DATA_STORAGE_TYPE !== 'memory' && process.env.DATA_STORAGE_TYPE !== 'cloud-storage') {
       logger.info('Initializing database...');
       await initDatabase();
       logger.info('Database initialized successfully');
     } else {
-      logger.info('Using memory storage, skipping SQLite database');
+      logger.info(`Using ${process.env.DATA_STORAGE_TYPE} storage, skipping SQLite database`);
     }
     
     // Start server

@@ -12,6 +12,7 @@ credentials*.json
 # Environment variables
 .env
 .env.*
+.env.docker
 
 # Node
 node_modules/
