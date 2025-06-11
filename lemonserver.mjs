@@ -1,11 +1,18 @@
 // lemonserver.mjs
 import express from 'express';
 import crypto from 'crypto';
-import nodemailer from 'nodemailer';
-
-import { jobDataStorage, hasUsedFreePass, markFreePassUsed, saveFreePassUserInfo, getFreePassUsers, getFreePassUserCount, getUserCredits, addUserCredits, deductUserCredit, saveCreditsStorage, orderToJobMapping, persistJobData, loadJobData } from './storage.mjs';
-
-const processedWebhooks = new Set();
+import { 
+  jobDataStorage, 
+  hasUsedFreePass, 
+  markFreePassUsed,
+  saveFreePassUserInfo,
+  getFreePassUsers,
+  getFreePassUserCount,
+  getUserCredits,
+  addUserCredits,
+  deductUserCredit,
+  saveCreditsStorage
+} from './storage.mjs';
 
 // New helper function to ensure atomic operations
 async function atomicFreePassOperation(userId, userData, logger) {
@@ -72,111 +79,60 @@ async function fetchWithRetry(url, options, maxRetries = 3) {
 
 // Add the generateUserId function here, right after fetchWithRetry
 function generateUserId(req) {
-  // Use session-based ID if available
-  if (req.session && req.session.userId) {
-    return req.session.userId;
-  }
+  const ip = req.ip || req.connection.remoteAddress;
+  const userAgent = req.headers['user-agent'] || '';
   
-  // Generate new session ID
-  const newUserId = crypto.randomBytes(32).toString('hex');
+  // Get device fingerprinting information from headers
+  const acceptLanguage = req.headers['accept-language'] || '';
+  const acceptEncoding = req.headers['accept-encoding'] || '';
   
-  // Store in session if session exists
-  if (req.session) {
-    req.session.userId = newUserId;
-  }
- 
-  return newUserId;
-}
-
-const freePassEmails = new Set(); // Or use database table
-
-async function sendVerificationEmail(email, token) {
-  const transporter = nodemailer.createTransport({
-    // Configure your email service
-    service: 'gmail',
-    auth: {
-      user: process.env.EMAIL_USER,
-      pass: process.env.EMAIL_PASS
-    }
-  });
-  
-  await transporter.sendMail({
-    from: '"CV Optimizer" <noreply@cvoptimizer.com>',
-    to: email,
-    subject: 'Verify your free CV optimization',
-    html: `Click here to verify: ${process.env.APP_URL}/verify?token=${token}`
-  });
+  // Create more robust hash combining multiple factors
+  const idString = `${ip}-${userAgent}-${acceptLanguage}-${acceptEncoding}`;
+  return crypto.createHash('sha256').update(idString).digest('hex');
 }
 
 const userRateLimits = new Map(); // Track request counts per user
+
 export default function initLemonSqueezyRoutes(app, logger) {
+
 // 1. Enhanced store-job-data endpoint with better logging
-app.post('/api/store-job-data', express.json(), async (req, res) => {
-    // Debug logging
-    // Production Debug
-    logger.info(`=== PRODUCTION DEBUG ===`);
-    logger.info(`NODE_ENV: ${process.env.NODE_ENV}`);
-    logger.info(`Request reached store-job-data handler`);
-    logger.info(`Has body: ${!!req.body}`);
-    logger.info(`Body is empty: ${JSON.stringify(req.body) === '{}'}`);
-    logger.info(`Headers: ${JSON.stringify(req.headers)}`);
-    logger.info(`=== END PRODUCTION DEBUG ===`);
-    // CSRF Debug
-    logger.info("=== CSRF DEBUG ===");
-    logger.info(`Session ID: ${req.sessionID}`);
-    logger.info(`Session CSRF Token: ${req.session?.csrfToken}`);
-    logger.info(`Header CSRF Token: ${req.headers['x-csrf-token']}`);
-    logger.info(`Body CSRF Token: ${req.body._csrf}`);
-    logger.info(`Session exists: ${!!req.session}`);
-    logger.info("=== END DEBUG ===");
+app.post('/api/store-job-data', express.json(), (req, res) => {
   try {
     logger.info("Storing job data before checkout");
     logger.debug(`Direct body access: ${JSON.stringify(req.body)}`);
     
-    // Extract bundleType first
-    const { bundleType, jobUrl, cvHTML, refinementLevel, tabSessionId } = req.body;
+    // Check for rate limiting by user ID
     const userId = generateUserId(req);
-    logger.info(`User ID: ${userId.substring(0, 8)}..., bundleType: ${bundleType || 'none'}`);
-
-    // Get or create rate limit data for this user
-    const userRequests = userRateLimits.get(userId) || { count: 0, lastReset: Date.now() };
-    const now = Date.now();
+    const userRequests = userRateLimits.get(userId) || 0;
     
-    // Reset counter if window has passed (5 minutes)
-    if (now - userRequests.lastReset > 5 * 60 * 1000) {
-      userRequests.count = 0;
-      userRequests.lastReset = now;
+    // If user has already used free pass, enforce stricter rate limits
+    if (hasUsedFreePass(userId)) {
+      // Check if they're making too many requests in a short time
+      if (userRequests > 3) { // Max 3 requests within time window
+        logger.warn(`Rate limit exceeded for user ${userId.substring(0, 8)}...`);
+        return res.status(429).json({ 
+          error: "Too many requests. You've already used your free pass.",
+          rateLimit: true
+        });
+      }
+      
+      // Increment request counter
+      userRateLimits.set(userId, userRequests + 1);
+      
+      // Reset counter after a delay (e.g., 1 minute)
+      setTimeout(() => {
+        const currentCount = userRateLimits.get(userId);
+        if (currentCount) {
+          userRateLimits.set(userId, Math.max(0, currentCount - 1));
+        }
+      }, 60000);
     }
 
-    // Check for free pass attempts vs paid attempts
-    const isAttemptingFreePass = !bundleType && hasUsedFreePass(userId);
-    if (isAttemptingFreePass) {
-      logger.warn(`User ${userId.substring(0, 8)} attempting to get another free pass`);
-      return res.status(429).json({ 
-        error: "You've already used your free pass. Please purchase a plan.",
-        freePassUsed: true
-      });
-    }
+    const { jobUrl, cvHTML, refinementLevel, tabSessionId } = req.body;
     
-    // More lenient rate limiting for paid purchases
-    const maxRequests = bundleType ? 10 : 5; // Higher limit for paid purchases
-
-    // Check rate limit
-    if (userRequests.count >= maxRequests) {
-      logger.warn(`Rate limit hit for user ${userId.substring(0, 8)}: ${userRequests.count} requests`);
-      return res.status(429).json({ 
-        error: "Too many requests. Please wait a moment and try again.",
-        rateLimit: true
-      });
-    }
-
-    // Increment counter and save back to Map
-    userRequests.count++;
-    userRateLimits.set(userId, userRequests); // ✅ Correct - save the object
-
-    // Remove the setTimeout decay logic - not needed with time-window approach
+    // Enhanced logging for debugging
+    logger.info(`Refinement level received in store-job-data: ${refinementLevel}`);
     
-    // Validate required fields
     if (!jobUrl || !cvHTML) {
       logger.error("Missing jobUrl or cvHTML in store-job-data request");
       return res.status(400).json({ error: "jobUrl and cvHTML are required" });
@@ -189,27 +145,24 @@ app.post('/api/store-job-data', express.json(), async (req, res) => {
     // Generate a unique job ID
     const jobId = crypto.randomBytes(16).toString('hex');
     
-    // Store the data using jobId as the primary key
-    await persistJobData(jobId, { 
+    // Store the data using jobId as the primary key, including tabSessionId
+    jobDataStorage.set(jobId, { 
       jobId,
       jobUrl, 
       cvHTML,
       refinementLevel: finalLevel,
-      tabSessionId: tabSessionId || Math.random().toString(36).substring(2),
+      tabSessionId: tabSessionId || Math.random().toString(36).substring(2), // Store the tabSessionId
       userId: userId,
-      bundleType: bundleType,
-      createdAt: new Date().toISOString(),
-      checkoutPending: true,
-      lastUpdated: new Date().toISOString()
+      createdAt: new Date().toISOString()
     });
     
-    logger.info(`✅ Pre-stored job data for jobId: ${jobId}, refinement level: ${finalLevel}, bundleType: ${bundleType || 'single'}`);
+    logger.info(`✅ Pre-stored job data for jobId: ${jobId}, refinement level: ${finalLevel}`);
     
     return res.json({ 
       status: "success", 
       message: "Job data stored successfully",
       jobId: jobId,
-      refinementLevel: finalLevel
+      refinementLevel: finalLevel // Echo back for confirmation
     });
   } catch (error) {
     logger.error("Error storing job data:", error);
@@ -235,7 +188,7 @@ app.post('/api/create-checkout', express.json(), async (req, res) => {
     logger.info(`Payment type selected: ${bundleType}`);
 
     // Find the entry by jobId
-    const jobData = await loadJobData(jobId);
+    const jobData = jobDataStorage.get(jobId);
     
     if (!jobData) {
       logger.error(`No job data found for Job ID: ${jobId}`);
@@ -259,18 +212,18 @@ app.post('/api/create-checkout', express.json(), async (req, res) => {
     logger.info(`User ID: ${userId.substring(0, 8)}...`);
 
     // Check if user has credits first
-    const userCredits = await getUserCredits(userId);
+    const userCredits = getUserCredits(userId);
     if (userCredits > 0) {
       logger.info(`User has ${userCredits} credits, using credit instead of payment`);
       
       // Deduct one credit
-      await deductUserCredit(userId);
+      deductUserCredit(userId);
       saveCreditsStorage(); // Save the credit deduction
       
       // IMPORTANT: Trigger refinement process for credit usage
       try {
         // Get the job data
-        const jobData = await loadJobData(jobId);
+        const jobData = jobDataStorage.get(jobId);
         if (!jobData || !jobData.jobUrl || !jobData.cvHTML) {
           throw new Error('Missing job data for refinement');
         }
@@ -281,10 +234,7 @@ app.post('/api/create-checkout', express.json(), async (req, res) => {
         
         const refineResponse = await fetch(refineUrl, {
           method: 'POST',
-          headers: { 
-            'Content-Type': 'application/json',
-            'X-Internal-Request': 'true'  // ADD THIS
-          },
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             orderId: `credit-${jobId}`, // Mark as credit-based
             jobId,
@@ -398,25 +348,11 @@ app.post('/api/create-checkout', express.json(), async (req, res) => {
       throw new Error('No checkout URL in response');
     }
 
-    // ADD THIS CODE HERE - After getting checkoutUrl, before sending response
-    // Extract checkout ID from URL to create mapping
-    const checkoutId = checkoutUrl.match(/checkout\/custom\/([^?]+)/)?.[1];
-    if (checkoutId) {
-      orderToJobMapping.set(checkoutId, {
-        jobId: jobId,
-        userId: userId,
-        tabSessionId: tabSessionId,
-        refinementLevel: jobData.refinementLevel,
-        bundleType: bundleType
-      });
-      logger.info(`Mapped checkout ${checkoutId} to job ${jobId}`);
-    }
-
     logger.info('Checkout session created:', checkoutUrl);
     res.json({ 
       checkoutUrl,
-      refinementLevel: jobData.refinementLevel,
-      bundleType: bundleType
+      refinementLevel: jobData.refinementLevel, // Echo back in response
+      bundleType: bundleType // ADD THIS LINE
     });
 
   } catch (error) {
@@ -432,19 +368,6 @@ app.post('/api/create-checkout', express.json(), async (req, res) => {
 app.post('/webhooks/lemonsqueezy', express.raw({ type: 'application/json' }), async (req, res) => {
   try {
     logger.info("🔥 Webhook received at /webhooks/lemonsqueezy");
-
-    // Parse the webhook payload first
-    const bodyStr = req.body.toString('utf8');
-    const payload = JSON.parse(bodyStr);
-    
-    // ADD: Check for duplicate webhook processing
-    const eventId = payload.meta?.webhook_id || payload.meta?.event_id;
-    if (eventId) {
-      if (processedWebhooks.has(eventId)) {
-        logger.info(`Webhook ${eventId} already processed, skipping`);
-        return res.status(200).json({ received: true, duplicate: true });
-      }
-    }
 
     // 1️⃣ Extract signature from headers
     const signature = req.get('x-signature');
@@ -464,7 +387,8 @@ app.post('/webhooks/lemonsqueezy', express.raw({ type: 'application/json' }), as
       return res.status(400).json({ error: 'Invalid request body format' });
     }
 
-    // 4️⃣ Convert body to string - const bodyStr = rawBody.toString('utf8');
+    // 4️⃣ Convert body to string
+    const bodyStr = rawBody.toString('utf8');
 
     // 5️⃣ Compute HMAC signature for verification
     const computedSignature = crypto
@@ -480,13 +404,15 @@ app.post('/webhooks/lemonsqueezy', express.raw({ type: 'application/json' }), as
 
     // 6️⃣ Skip signature validation for now (for testing)
     // If this is a real production environment, you should uncomment this
-    
+    /*
     if (!signature || computedSignature !== signature) {
       logger.error('❌ Invalid webhook signature');
       return res.status(401).json({ error: 'Invalid signature' });
     }
-    
+    */
+
     // 7️⃣ Parse the webhook payload
+    const payload = JSON.parse(bodyStr);
     logger.debug('Webhook payload (first 500 chars):', JSON.stringify(payload).slice(0, 500));
       
     if (!payload?.meta?.event_name || !payload?.data) {
@@ -498,68 +424,31 @@ app.post('/webhooks/lemonsqueezy', express.raw({ type: 'application/json' }), as
     const eventName = payload.meta.event_name;
     logger.info(`✅ Processing webhook event: ${eventName}`);
 
-    // NOW you can add the debug logging AFTER eventName is defined
-    logger.info('=== WEBHOOK DEBUG ===');
-    logger.info(`Event: ${eventName}`);
-    logger.info(`Order ID: ${payload.data?.id}`);
-    logger.info(`Attributes keys: ${Object.keys(payload.data?.attributes || {}).join(', ')}`);
-    if (payload.data?.attributes?.checkout_data) {
-      logger.info(`Checkout data keys: ${Object.keys(payload.data.attributes.checkout_data).join(', ')}`);
-    }
-    logger.info('=== END DEBUG ===');
-
     if (eventName === 'order_created') {
       const orderId = payload.data.id;
       const status = payload.data.attributes?.status;
       
       if (status === 'paid') {
-        // Try to get checkout ID from order
-        const checkoutId = payload.data.attributes?.checkout_id || 
-                          payload.data.relationships?.checkout?.data?.id;
-        
-        if (checkoutId && orderToJobMapping.has(checkoutId)) {
-          const mappedData = orderToJobMapping.get(checkoutId);
-          jobId = mappedData.jobId;
-          userId = mappedData.userId;
-          tabSessionId = mappedData.tabSessionId;
-          refinementLevel = mappedData.refinementLevel;
-          bundleType = mappedData.bundleType;
-          
-          logger.info(`Retrieved data from checkout mapping: ${JSON.stringify(mappedData)}`);
-        }
-  
+        // Extract custom data - check multiple possible locations
         let jobId = null;
         let refinementLevel = null;
         let tabSessionId = null;
         let bundleType = null;
         let userId = null;
         
-        // Method 1: Check multiple possible locations for custom data
-        const customLocations = [
-          payload.data.attributes?.checkout_data?.custom,
-          payload.data.attributes?.custom,
-          payload.data.attributes?.metadata?.custom,
-          payload.data.attributes?.meta?.custom,
-          payload.meta?.custom_data
-        ];
-        
-        for (const location of customLocations) {
-          if (location) {
-            jobId = location.jobId || jobId;
-            refinementLevel = location.refinementLevel || refinementLevel;
-            tabSessionId = location.tabSessionId || tabSessionId;
-            bundleType = location.bundleType || bundleType;
-            userId = location.userId || userId;
-            
-            if (jobId) {
-              logger.info(`Found custom data at: ${JSON.stringify(location)}`);
-              break;
-            }
-          }
+        // Method 1: From checkout_data.custom
+        if (payload.data.attributes?.checkout_data?.custom) {
+            logger.info(`DEBUG: Full checkout_data: ${JSON.stringify(payload.data.attributes?.checkout_data)}`);
+            logger.info(`DEBUG: Full attributes: ${JSON.stringify(payload.data.attributes)}`);
+          const customData = payload.data.attributes.checkout_data.custom;
+          jobId = customData.jobId;
+          refinementLevel = customData.refinementLevel;
+          tabSessionId = customData.tabSessionId;
+          bundleType = customData.bundleType;
+          userId = customData.userId;
+          
+          logger.info(`Found custom data - jobId: ${jobId}, bundle: ${bundleType}, userId: ${userId}`);
         }
-        
-        // Log all attributes to debug
-        logger.info(`Full order attributes: ${JSON.stringify(payload.data.attributes)}`);
 
         // ADD THIS: Method 1.5 - Get userId from customer email
         if (!userId && payload.data.attributes?.user_email) {
@@ -607,7 +496,7 @@ app.post('/webhooks/lemonsqueezy', express.raw({ type: 'application/json' }), as
         
         // If we still don't have userId but have a bundle, extract from most recent job
         if (bundleType === 'bundle' && !userId && jobId) {
-          const jobData = await loadJobData(jobId);
+          const jobData = jobDataStorage.get(jobId);
           if (jobData && jobData.userId) {
             userId = jobData.userId;
             logger.info(`Extracted userId from job data: ${userId.substring(0, 8)}...`);
@@ -616,7 +505,7 @@ app.post('/webhooks/lemonsqueezy', express.raw({ type: 'application/json' }), as
 
         // If we still don't have userId, try to extract it from the stored job data
         if (!userId && jobId) {
-          const jobData = await loadJobData(jobId);
+          const jobData = jobDataStorage.get(jobId);
           if (jobData) {
             // The userId might be stored in the job data from the checkout creation
             userId = jobData.userId;
@@ -632,13 +521,6 @@ app.post('/webhooks/lemonsqueezy', express.raw({ type: 'application/json' }), as
             refinementLevel = payload.data.attributes.meta_data.refinementLevel;
             logger.info(`Found jobId (${jobId}) and refinement level (${refinementLevel}) from meta_data`);
           }
-
-        // Clear rate limit for this user after successful payment
-        if (userId) {
-          userRateLimits.delete(userId);
-          logger.info(`Cleared rate limit for user ${userId.substring(0, 8)} after successful payment`);
-        }
-
         // Option 3: Look for the most recent job data if jobId not found
         else {
           logger.warn("No jobId found in webhook payload, looking for most recent job");
@@ -655,7 +537,7 @@ app.post('/webhooks/lemonsqueezy', express.raw({ type: 'application/json' }), as
             
             // Use the most recent jobId
             jobId = allJobIds[0];
-            const jobData = await loadJobData(jobId);
+            const jobData = jobDataStorage.get(jobId);
             refinementLevel = jobData?.refinementLevel || 5;
             
             // EXTRACT userId FROM JOB DATA - ADD THIS
@@ -679,7 +561,7 @@ app.post('/webhooks/lemonsqueezy', express.raw({ type: 'application/json' }), as
           saveCreditsStorage();
 
           if (jobId) {
-            const existingData = await loadJobData(jobId) || {};
+            const existingData = jobDataStorage.get(jobId) || {};
             jobDataStorage.set(jobId, {
               ...existingData,
               isBundlePurchase: true,
@@ -690,11 +572,6 @@ app.post('/webhooks/lemonsqueezy', express.raw({ type: 'application/json' }), as
 
           logger.info(`✅ Added 10 credits to user ${userId.substring(0, 8)}...`);
           
-          // ADD HERE: Record webhook as processed
-          if (eventId) {
-            processedWebhooks.add(eventId);
-          }
-
           // Don't trigger refinement for bundle purchases
           return res.status(200).json({
             received: true,
@@ -705,7 +582,7 @@ app.post('/webhooks/lemonsqueezy', express.raw({ type: 'application/json' }), as
         }
 
         // Find job data by jobId
-        const jobData = await loadJobData(jobId);
+        const jobData = jobDataStorage.get(jobId);
         
         if (!jobData) {
           logger.error(`❌ No job data found for jobId: ${jobId}`);
@@ -731,14 +608,11 @@ app.post('/webhooks/lemonsqueezy', express.raw({ type: 'application/json' }), as
         try {
           const refineResponse = await fetch(`${process.env.APP_URL || 'http://localhost:8080'}/refine`, {
             method: 'POST',
-            headers: { 
-              'Content-Type': 'application/json',
-              'X-Internal-Request': 'true'  // ADD THIS LINE
-            },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               orderId,
               jobId,
-              tabSessionId,
+              tabSessionId, // Include this in the refinement request
               conversation: [],
               jobUrl: jobData.jobUrl,
               cvHTML: jobData.cvHTML,
@@ -755,11 +629,6 @@ app.post('/webhooks/lemonsqueezy', express.raw({ type: 'application/json' }), as
 
           logger.info(`✅ Refinement process started with level: ${finalRefinementLevel}`);
 
-            // ADD HERE: Record webhook as processed
-              if (eventId) {
-                processedWebhooks.add(eventId);
-              }
-
           return res.status(200).json({
             received: true,
             status: 'paid',
@@ -773,11 +642,6 @@ app.post('/webhooks/lemonsqueezy', express.raw({ type: 'application/json' }), as
         }
       }
     }
-
-    // ADD HERE: Record webhook as processed for other events
-      if (eventId) {
-        processedWebhooks.add(eventId);
-      }
 
     // Acknowledge other events to prevent webhook retries
     res.status(200).json({ received: true });
@@ -796,21 +660,22 @@ app.post('/webhooks/lemonsqueezy', express.raw({ type: 'application/json' }), as
     app._router.handle(req, res);
   });
 
-// Refinement status endpoint - simplified to use jobId only
+  // Refinement status endpoint - simplified to use jobId only
+// In lemonserver.mjs, update the refinement-status endpoint:
+
 app.post('/api/refinement-status', express.json(), async (req, res) => {
   try {
     const { jobId, tabSessionId } = req.body;
-        logger.info(`🔍 Refinement status check - jobId: ${jobId}, tabSessionId: ${tabSessionId}`);
     
     if (!jobId) {
       return res.status(400).json({ error: 'jobId is required' });
-    }    
+    }
+    
     logger.info(`Checking refinement status for jobId: ${jobId} with tabSessionId: ${tabSessionId || 'not provided'}`);
     
     // Get job data directly by jobId
-    const jobData = await loadJobData(jobId);
-        logger.info(`📊 Job data found: ${jobData ? 'YES' : 'NO'}`);
-
+    const jobData = jobDataStorage.get(jobId);
+    
     if (!jobData) {
       logger.info(`No data found for jobId: ${jobId}`);
       return res.json({ 
@@ -818,8 +683,6 @@ app.post('/api/refinement-status', express.json(), async (req, res) => {
         message: 'No refinement data found for this job'
       });
     }
-          logger.info(`📊 Job data has refinedHTML: ${jobData.refinedHTML ? 'YES' : 'NO'}`);
-
     
     // CHECK IF THIS WAS A BUNDLE PURCHASE
     if (jobData.isBundlePurchase) {
@@ -876,7 +739,7 @@ app.post('/api/get-job-data', express.json(), async (req, res) => {
     logger.info(`Getting job data for jobId: ${jobId}`);
     
     // Get job data directly by jobId
-    const jobData = await loadJobData(jobId);
+    const jobData = jobDataStorage.get(jobId);
     
     if (!jobData) {
       logger.info(`No data found for jobId: ${jobId}`);
@@ -907,27 +770,6 @@ app.post('/api/free-pass-submit', express.json(), async (req, res) => {
     logger.info("Processing free pass submission");
     
     const { firstName, lastName, email, jobId } = req.body;
-
-    // ADD: Check if email already used
-    if (freePassEmails.has(email.toLowerCase())) {
-      return res.status(400).json({ 
-        success: false, 
-        message: 'This email has already been used for a free pass' 
-      });
-    }
-    
-    // ADD: Check database for email
-    const existingUser = await db.get(
-      'SELECT * FROM free_pass_users WHERE email = ?',
-      email.toLowerCase()
-    );
-    
-    if (existingUser) {
-      return res.status(400).json({ 
-        success: false, 
-        message: 'This email has already been used for a free pass' 
-      });
-    }
     
     // Log the request for debugging
     logger.debug(`Free pass submission data: ${JSON.stringify(req.body)}`);
@@ -994,7 +836,7 @@ app.post('/api/free-pass-submit', express.json(), async (req, res) => {
     logger.info(`Free pass user submitted: ${email} (${firstName} ${lastName})`);
     
     // Find the job data
-    const jobData = await loadJobData(jobId);
+    const jobData = jobDataStorage.get(jobId);
     
     if (!jobData) {
       logger.error(`No job data found for job ID: ${jobId}`);
@@ -1011,10 +853,7 @@ app.post('/api/free-pass-submit', express.json(), async (req, res) => {
         
         const refineResponse = await fetch(refineUrl, {
           method: 'POST',
-          headers: { 
-            'Content-Type': 'application/json',
-            'X-Internal-Request': 'true'  // ADD THIS
-          },
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             jobId,
             orderId: `free-${jobId}`, // Mark as free pass
@@ -1054,9 +893,9 @@ app.post('/api/free-pass-submit', express.json(), async (req, res) => {
 });
 
 // Credits check endpoint
-app.get('/api/check-credits', async (req, res) => {  // Add async
+app.get('/api/check-credits', (req, res) => {
   const userId = generateUserId(req);
-  const credits = await getUserCredits(userId);  // Add await
+  const credits = getUserCredits(userId);
   
   logger.info(`Credits check for user ${userId.substring(0, 8)}...: ${credits} credits`);
   
@@ -1103,47 +942,5 @@ app.get('/api/admin/free-pass-stats', express.json(), async (req, res) => {
     return res.status(500).json({ error: 'Internal server error' });
   }
 })
-
-// ADD THE RATE LIMIT DEBUGGER HERE - BEFORE THE CLOSING BRACE
-// Utility endpoint to check and clear rate limits
-app.post('/api/check-rate-limit', express.json(), (req, res) => {
-  const userId = generateUserId(req);
-  const userRequests = userRateLimits.get(userId);
-  
-  if (!userRequests) {
-    return res.json({ 
-      rateLimited: false, 
-      requests: 0,
-      message: 'No rate limit data for this user'
-    });
-  }
-  
-  const now = Date.now();
-  const timeSinceReset = now - userRequests.lastReset;
-  const windowRemaining = Math.max(0, (5 * 60 * 1000) - timeSinceReset);
-  
-  res.json({
-    rateLimited: userRequests.count >= 10,
-    requests: userRequests.count,
-    windowRemaining: Math.ceil(windowRemaining / 1000), // seconds
-    message: windowRemaining > 0 ? 
-      `${userRequests.count} requests made. Window resets in ${Math.ceil(windowRemaining / 1000)} seconds.` :
-      'Rate limit window has expired'
-  });
-});
-
-// Clean up old rate limit entries every hour
-setInterval(() => {
-  const now = Date.now();
-  const fiveMinutes = 5 * 60 * 1000;
-  
-  userRateLimits.forEach((data, userId) => {
-    if (now - data.lastReset > fiveMinutes * 2) { // Clean up entries older than 10 minutes
-      userRateLimits.delete(userId);
-    }
-  });
-  
-  logger.info(`Rate limit cleanup: ${userRateLimits.size} active entries`);
-}, 60 * 60 * 1000); // Run every hour
 
 }

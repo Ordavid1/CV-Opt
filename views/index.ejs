@@ -96,8 +96,8 @@
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     
     <!-- Stylesheets -->
-    <link rel="stylesheet" href="/safari-fixes.css?v=<%= Date.now() %>">
-    <link rel="stylesheet" href="/styles.css?v=<%= Date.now() %>" />
+    <link rel="stylesheet" href="/safari-fixes.css">
+    <link rel="stylesheet" href="/styles.css" />
 
     <!-- Structured Data for rich snippets -->
 <script type="application/ld+json">
@@ -195,9 +195,7 @@
   }
 ]
 </script>
-      <!-- CSRF Token -->
-      <meta name="csrf-token" content="<%= csrfToken %>">
-
+      
   </head>
   <body>
     <!-- Google Tag Manager (noscript) -->
@@ -670,19 +668,11 @@
     </script>
 
     <!-- Scripts for functionality -->
-    <script src="/checkout.js?v=<%= Date.now() %>" defer></script>
-    <script src="/app-scripts.js?v=<%= Date.now() %>" defer></script>
+    <script src="/checkout.js" defer></script>
+    <script src="/app-scripts.js" defer></script>
 
     <!-- CORE FUNCTIONALITY SCRIPTS -->
     <script nonce="<%= nonce %>">
-      // Get CSRF token from meta tag
-      function getCSRFToken() {
-        const token = document.querySelector('meta[name="csrf-token"]');
-        return token ? token.getAttribute('content') : '';
-      }
-      // Store CSRF token globally
-      const csrfToken = getCSRFToken();
-
       // Global conversation array for multi-turn conversation (initialized on page load)
       let conversation = [
         { role: "user", content: "Hello, I'd like to refine my CV. Are you ready?" }
@@ -1413,10 +1403,7 @@
         // Send to server for refinement
         fetch("/refine", {
           method: "POST",
-          headers: { 
-            "Content-Type": "application/json",
-            "X-CSRF-Token": csrfToken  // ADD THIS
-          },
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ conversation, jobUrl, cvHTML, refinementLevel }),
         })
         .then((response) => response.json())
@@ -1477,10 +1464,7 @@
           
           const response = await fetch('/api/refinement-status', {
             method: 'POST',
-            headers: { 
-              'Content-Type': 'application/json',
-              'X-CSRF-Token': csrfToken  // ADD THIS
-            },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ jobId })
           });
 

@@ -1,12 +1,6 @@
 // public/lemoncheckout.js
-document.addEventListener('DOMContentLoaded', function() {
-  // Get CSRF token
-  function getCSRFToken() {
-    const token = document.querySelector('meta[name="csrf-token"]');
-    return token ? token.getAttribute('content') : '';
-  }
-  const csrfToken = getCSRFToken();
 
+document.addEventListener('DOMContentLoaded', function() {
   // Create and add the button immediately
   const container = document.getElementById('lemon-checkout-container');
   if (!container) {
@@ -63,8 +57,7 @@ document.addEventListener('DOMContentLoaded', function() {
       const response = await fetch('/api/create-checkout', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          'X-CSRF-Token': csrfToken // Ensure csrfToken is defined in your script
+          'Content-Type': 'application/json'
         }
       });
 

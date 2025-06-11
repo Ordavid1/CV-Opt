@@ -17,13 +17,9 @@ import helmet from 'helmet';
 import crypto from 'crypto';
 import cors from 'cors';
 import rateLimit from 'express-rate-limit';
-import session from 'express-session';
-import { doubleCsrf } from "csrf-csrf";
-
-import { jobDataStorage, hasUsedFreePass, markFreePassUsed, saveFreePassUserInfo, getFreePassUsers, getFreePassUserCount, getUserCredits, addUserCredits, deductUserCredit, saveCreditsStorage, orderToJobMapping, persistJobData, loadJobData } from './storage.mjs';
+import { jobDataStorage } from './storage.mjs';
 import initLemonSqueezyRoutes from './lemonserver.mjs';
 import { createCVRefinementPrompt, createInitialGreeting } from './public/promptTemplates.mjs';
-import { initDatabase } from './database.mjs';
 
 dotenv.config();
 const __filename = fileURLToPath(import.meta.url);
@@ -52,128 +48,33 @@ logger.info(`Views directory: ${path.join(__dirname, 'views')}`);
 // -----------------------
 // Initialize Express app
 // -----------------------
-// Add this at the top of index.mjs after imports
-const APP_VERSION = "2024-06-11-stateless-csrf-v1";
-logger.info(`========================================`);
-logger.info(`App starting - Version: ${APP_VERSION}`);
-logger.info(`Environment: ${process.env.NODE_ENV}`);
-logger.info(`========================================`);
 
 const app = express();
 const PORT = process.env.PORT || 8080;
 const HOST = '0.0.0.0'; // Always bind to 0.0.0.0 for Cloud Run
 
-app.use(session({
-  secret: process.env.SESSION_SECRET || crypto.randomBytes(64).toString('hex'),
-  resave: false,
-  saveUninitialized: true, // Change to true
-  cookie: { 
-    secure: process.env.NODE_ENV === 'production' && !process.env.BEHIND_PROXY, 
-    httpOnly: true,
-    sameSite: 'lax', // Add this
-    maxAge: 30 * 24 * 60 * 60 * 1000
-  },
-  proxy: true // Add this if behind a proxy
-}));
-
-app.set('trust proxy', 1);
-
-// Add this helper function at the top of index.mjs
-async function fetchWithTimeout(url, options = {}, timeout = 30000) {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeout);
-  
-  try {
-    const response = await fetch(url, {
-      ...options,
-      signal: controller.signal
-    });
-    clearTimeout(timeoutId);
-    return response;
-  } catch (error) {
-    clearTimeout(timeoutId);
-    if (error.name === 'AbortError') {
-      throw new Error(`Request timed out after ${timeout}ms`);
-    }
-    throw error;
-  }
-}
-
-// -------------------------------------------------------------------
-// CSRF Protection Setup
-// -------------------------------------------------------------------
-// Add these two functions before your middleware
-function generateCSRFToken() {
-  const token = crypto.randomBytes(32).toString('hex');
-  const timestamp = Date.now();
-  const data = `${token}.${timestamp}`;
-  const signature = crypto
-    .createHmac('sha256', csrfSecret)
-    .update(data)
-    .digest('hex');
-  return `${data}.${signature}`;
-}
-
-function verifyCSRFToken(token) {
-  if (!token) return false;
-  
-  const parts = token.split('.');
-  if (parts.length !== 3) return false;
-  
-  const [tokenPart, timestamp, signature] = parts;
-  const data = `${tokenPart}.${timestamp}`;
-  
-  const expectedSignature = crypto
-    .createHmac('sha256', csrfSecret)
-    .update(data)
-    .digest('hex');
-    
-  if (signature !== expectedSignature) return false;
-  
-  // Increase token expiry to 24 hours for better UX
-  const tokenAge = Date.now() - parseInt(timestamp);
-  if (tokenAge > 24 * 60 * 60 * 1000) return false; // 24 hours
-  
-  return true;
-}
-
 // -------------------------------------------------------------------
 // Important middleware configuration for webhook handling
 // -------------------------------------------------------------------
 
-const strictApiLimiter = rateLimit({
-  windowMs: 5 * 60 * 1000, // 5 minutes instead of 15
-  max: 10, // 10 requests per windowMs instead of 3
+/* Create strict limiter for checkout and API endpoints
+const apiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 10, // max 10 requests per windowMs
   standardHeaders: true,
   legacyHeaders: false,
-  message: 'Too many requests. Please try again later.',
-  keyGenerator: (req) => {
-    // Use session ID if available, otherwise use IP
-    return req.session?.userId || req.ip;
-  },
-  skip: (req) => {
-    // Skip rate limiting for bundle purchases
-    return req.body && req.body.bundleType === 'bundle';
-  }
-});
+  message: 'Too many requests from this IP, please try again later.'
+}); 
 
-const generalApiLimiter = rateLimit({
-  windowMs: 1 * 60 * 1000, // 1 minute
-  max: 20, // 20 requests per minute
-  standardHeaders: true,
-  legacyHeaders: false
-});
-
-// Apply strict limiter to sensitive endpoints
-app.use('/api/store-job-data', strictApiLimiter);
-app.use('/api/create-checkout', strictApiLimiter);
-app.use('/api/free-pass-submit', strictApiLimiter);
-app.use('/refine', strictApiLimiter);
-
-// Apply general limiter to other API endpoints
-app.use('/api/', generalApiLimiter);
+// Apply to specific routes
+app.use('/api/store-job-data', apiLimiter);
+app.use('/api/create-checkout', apiLimiter);
+app.use('/refine', apiLimiter);
+*/
 
 // Standard middleware for non-webhook routes
+
+
 // Updated CORS configuration
 app.use(cors({
   origin: '*',
@@ -186,27 +87,11 @@ app.use(cors({
 app.use(compression());
 
 // Add security headers
-app.use((req, res, next) => {
-  // Generate request ID
-  req.id = crypto.randomBytes(16).toString('hex');
-  res.setHeader('X-Request-ID', req.id);
-
+app.use((_req, res, next) => {
   res.setHeader('X-Frame-Options', 'SAMEORIGIN');
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('X-XSS-Protection', '1; mode=block');
   res.setHeader('Access-Control-Allow-Origin', '*');
-  // ADD: Additional security headers
-  res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
-  res.setHeader('X-Permitted-Cross-Domain-Policies', 'none');
-  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
-  
-  // Generate nonce for CSP
-  res.locals.nonce = crypto.randomBytes(16).toString('base64');
-  
-  // Make CSRF token available to views
-      // CSRF token is already set in res.locals by the middleware above
-      // No need to do anything here
-
   res.locals.nonce = crypto.randomBytes(16).toString('base64');
   next();
 });
@@ -404,46 +289,6 @@ app.use(helmet({
   crossOriginResourcePolicy: { policy: "cross-origin" }
 }));
 
-// Set up CSRF protection (where the old code was)
-const csrfSecret = process.env.CSRF_SECRET || crypto.randomBytes(32).toString('hex');
-logger.info(`CSRF Secret first 10 chars: ${csrfSecret.substring(0, 10)}...`);
-
-// Apply CSRF protection middleware with webhook skip
-app.use((req, res, next) => {
-    // Add this debug logging
-  if (req.path === '/api/store-job-data') {
-    logger.info(`=== CSRF CHECK for store-job-data ===`);
-    logger.info(`Method: ${req.method}`);
-    logger.info(`Has X-CSRF-Token header: ${!!req.headers['x-csrf-token']}`);
-    logger.info(`Token first 20 chars: ${req.headers['x-csrf-token']?.substring(0, 20)}...`);
-    logger.info(`Token verification would return: ${verifyCSRFToken(req.headers['x-csrf-token'])}`);
-  }
-  // Skip CSRF for safe operations and internal requests
-  if (req.path.includes('/webhook') || 
-      req.method === 'GET' || 
-      req.headers['x-internal-request'] === 'true' ||
-      req.path.includes('/health')) {
-    return next();
-  }
-  
-  // For POST/PUT/DELETE requests
-  if (['POST', 'PUT', 'DELETE'].includes(req.method)) {
-    const token = req.headers['x-csrf-token'] || req.body._csrf;
-    
-    // Log for debugging (remove in production)
-    if (req.path === '/api/store-job-data' || req.path === '/api/get-job-data') {
-      logger.info(`CSRF Check - Path: ${req.path}, Has Token: ${!!token}`);
-    }
-    
-    if (!verifyCSRFToken(token)) {
-      logger.error(`Invalid CSRF token for path: ${req.path}`);
-      return res.status(403).json({ error: 'Invalid CSRF token' });
-    }
-  }
-  
-  next();
-});
-
 // -------------------------------------------------------------------
 // Check environment variables
 // -------------------------------------------------------------------
@@ -452,6 +297,7 @@ const requiredEnvVars = [
   'LEMON_API_KEY',
   'LEMON_SQUEEZY_STORE_ID',
   'LEMON_SQUEEZY_VARIANT_ID',
+  'LEMON_SQUEEZY_VARIANT_ID_BUNDLE',
   'APP_URL',
 ];
 
@@ -537,16 +383,13 @@ app.get('/health', (_req, res) => {
 
 app.get('/', (_req, res, next) => {
   const nonce = crypto.randomBytes(16).toString('base64');
-  const csrfToken = generateCSRFToken(); // Use the new stateless token
-  
-  logger.info("Serving index.ejs with stateless CSRF token");
+  logger.info("Serving index.ejs");
   
   try {
     res.render('index', { 
       nonce,
-      csrfToken, // This is now stateless
-      lemonsqueezyVariantId: process.env.LEMON_SQUEEZY_VARIANT_ID,
-      appUrl: process.env.APP_URL || `http://${HOST}:${PORT}`
+      lemonsqueezyVariantId: process.env.LEMON_SQUEEZY_VARIANT_ID || '703669',
+      appUrl: process.env.APP_URL || `http://${HOST}:${PORT}` // Changed from protocolUsed to http
     });
   } catch (error) {
     logger.error('Error in root route:', error);
@@ -657,13 +500,13 @@ app.post('/refine', async (req, res) => {
 
     // Store with jobId as the key, including tabSessionId
     if (jobId) {
-      const existingData = await loadJobData(jobId) || {};
-      await persistJobData(jobId, { 
+      const existingData = jobDataStorage.get(jobId) || {};
+      jobDataStorage.set(jobId, { 
         ...existingData,
         jobUrl,
         cvHTML,
         refinementLevel: level,
-        tabSessionId,
+        tabSessionId, // Store the tabSessionId with the job data
       });
       logger.info(`✅ Updated job data for jobId: ${jobId} with refinement level: ${level} and tabSessionId: ${tabSessionId}`);
     }
@@ -684,20 +527,12 @@ app.post('/refine', async (req, res) => {
       return; // Stop further execution of this handler
     }
 
-    if (jobData.status === 'failed') {
-    return res.json({
-      status: 'failed',
-      error: jobData.error || 'Refinement process failed',
-      message: 'The refinement process encountered an error. Please try again.'
-      });
-    }
-
     // For normal user-initiated calls, continue with synchronous processing
     // -------------------------------------------------------------------
     // 1. Fetch the job page
     // -------------------------------------------------------------------
     logger.info("Fetching job description page...");
-    const jobResponse = await fetchWithTimeout(jobUrl, {}, 30000); // 30 second timeout
+    const jobResponse = await fetch(jobUrl);
     logger.debug(`Job page fetch status: ${jobResponse.status}`);
     if (!jobResponse.ok) {
       throw new Error('Failed to fetch the job description page.');
@@ -853,18 +688,8 @@ app.post('/refine', async (req, res) => {
       
     // 1. Fetch the job page
     logger.info("Background: Fetching job description page...");
-    const jobResponse = await fetchWithTimeout(jobUrl, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-        'Accept-Language': 'en-US,en;q=0.5',
-        'Accept-Encoding': 'gzip, deflate, br',
-        'DNT': '1',
-        'Connection': 'keep-alive',
-        'Upgrade-Insecure-Requests': '1'
-      }
-    }, 30000);
-      if (!jobResponse.ok) {
+    const jobResponse = await fetch(jobUrl);
+    if (!jobResponse.ok) {
       throw new Error('Failed to fetch the job description page.');
     }
     
@@ -962,10 +787,10 @@ app.post('/refine', async (req, res) => {
         
         logger.info(`✅ Refinement results stored for jobId: ${jobId}`);
       } else {
-      logger.error("No jobId provided for storing results");
+        logger.error("No jobId provided for storing results");
       }
+      
       logger.info("Background processing completed successfully");
-      logger.info(`Stored data includes: refinedHTML length: ${cleanedReply.length}, changes: ${changesHtml ? 'yes' : 'no'}`);
 
       return {
         status: "success",
@@ -1000,52 +825,18 @@ app.post('/refine', async (req, res) => {
       };
     }
 
-  } catch (error) {
-    logger.error(`Background refinement failed for jobId ${jobId}: ${error.message}`);
-    logger.error(error.stack);
-    
-    // Save error state to storage
-    if (jobId) {
-      const existingData = await loadJobData(jobId) || {};
-      await persistJobData(jobId, {
-        ...existingData,
-        status: 'failed',
-        error: error.message,
-        failedAt: new Date().toISOString()
-      });
-    }
-    
-    throw error;
+  } catch (err) {
+    logger.error(`❌ Background processing failed: ${err.message}`);
+    throw err;
   }
 }
-
-
-// -------------------------------------------------------------------
-// Initialize database and server
-// -------------------------------------------------------------------
 
 const server = http.createServer(app);
-async function startServer() {
-  try {
-    // Skip database when using cloud storage
-    if (process.env.DATA_STORAGE_TYPE !== 'memory' && process.env.DATA_STORAGE_TYPE !== 'cloud-storage') {
-      logger.info('Initializing database...');
-      await initDatabase();
-      logger.info('Database initialized successfully');
-    } else {
-      logger.info(`Using ${process.env.DATA_STORAGE_TYPE} storage, skipping SQLite database`);
-    }
-    
-    // Start server
-    server.listen(PORT, HOST, () => {
-      logger.info(`Server running at http://${HOST}:${PORT}`);
-      console.log(`Server is listening on port ${PORT}`);
-    });
-  } catch (error) {
-    logger.error('Failed to start server:', error);
-    process.exit(1);
-  }
-}
+
+server.listen(PORT, HOST, () => {
+  logger.info(`Server running at http://${HOST}:${PORT}`);
+  console.log(`Server is listening on port ${PORT}`);
+});
 
 server.on('error', (error) => {
   logger.error('Server error:', error.message);
@@ -1054,9 +845,6 @@ server.on('error', (error) => {
     process.exit(1);
   }
 });
-
-// Start the server
-startServer();
 
 // Export the server and app for use in other parts of your code
 export { app, server };
