@@ -17,7 +17,7 @@ import helmet from 'helmet';
 import crypto from 'crypto';
 import cors from 'cors';
 import rateLimit from 'express-rate-limit';
-import { jobDataStorage } from './storage.mjs';
+import { jobDataStorage, setJobData, getJobData } from './storage.mjs';
 import initLemonSqueezyRoutes from './lemonserver.mjs';
 import { createCVRefinementPrompt, createInitialGreeting } from './public/promptTemplates.mjs';
 
@@ -500,13 +500,13 @@ app.post('/refine', async (req, res) => {
 
     // Store with jobId as the key, including tabSessionId
     if (jobId) {
-      const existingData = jobDataStorage.get(jobId) || {};
-      jobDataStorage.set(jobId, { 
+      const existingData = await getJobData(jobId) || {};
+      await setJobData(jobId, { 
         ...existingData,
         jobUrl,
         cvHTML,
         refinementLevel: level,
-        tabSessionId, // Store the tabSessionId with the job data
+        tabSessionId,
       });
       logger.info(`✅ Updated job data for jobId: ${jobId} with refinement level: ${level} and tabSessionId: ${tabSessionId}`);
     }
@@ -773,9 +773,8 @@ app.post('/refine', async (req, res) => {
       if (jobId) {
         // Get existing data to preserve any fields
         const existingData = jobDataStorage.get(jobId) || {};
-        
         // Store results with all data in one place
-        await jobDataStorageCloud.set(jobId, {
+        await setJobData(jobId, {
           ...existingData,
           jobUrl,
           cvHTML,
@@ -806,12 +805,13 @@ app.post('/refine', async (req, res) => {
       
       // Still store the result without changes
       if (jobId) {
-        const existingData = jobDataStorage.get(jobId) || {};
-        await jobDataStorageCloud.set(jobId, {
+        const existingData = await getJobData(jobId) || {};
+        await setJobData(jobId, {
           ...existingData,
           jobUrl,
           cvHTML,
           refinedHTML: cleanedReply,
+          changes: changesHtml,
           extractedKeywords,
           completedAt: new Date().toISOString()
         });
