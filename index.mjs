@@ -52,6 +52,12 @@ logger.info(`Views directory: ${path.join(__dirname, 'views')}`);
 // -----------------------
 // Initialize Express app
 // -----------------------
+// Add this at the top of index.mjs after imports
+const APP_VERSION = "2024-06-11-stateless-csrf-v1";
+logger.info(`========================================`);
+logger.info(`App starting - Version: ${APP_VERSION}`);
+logger.info(`Environment: ${process.env.NODE_ENV}`);
+logger.info(`========================================`);
 
 const app = express();
 const PORT = process.env.PORT || 8080;
@@ -382,6 +388,14 @@ logger.info(`CSRF Secret first 10 chars: ${csrfSecret.substring(0, 10)}...`);
 
 // Apply CSRF protection middleware with webhook skip
 app.use((req, res, next) => {
+    // Add this debug logging
+  if (req.path === '/api/store-job-data') {
+    logger.info(`=== CSRF CHECK for store-job-data ===`);
+    logger.info(`Method: ${req.method}`);
+    logger.info(`Has X-CSRF-Token header: ${!!req.headers['x-csrf-token']}`);
+    logger.info(`Token first 20 chars: ${req.headers['x-csrf-token']?.substring(0, 20)}...`);
+    logger.info(`Token verification would return: ${verifyCSRFToken(req.headers['x-csrf-token'])}`);
+  }
   // Skip CSRF for safe operations
   if (req.path.includes('/webhook') || 
       req.method === 'GET' || 
