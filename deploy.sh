@@ -9,6 +9,7 @@ REGION="us-east1"
 SERVICE_NAME="cv-opt"
 IMAGE_NAME="us-east1-docker.pkg.dev/${PROJECT_ID}/cv-opt-repo/${SERVICE_NAME}:v1"
 SERVICE_ACCOUNT="${SERVICE_NAME}@${PROJECT_ID}.iam.gserviceaccount.com"
+STORAGE_BUCKET="cv-opt-user-data"
 
 # Colors for output
 RED='\033[0;31m'
@@ -25,6 +26,10 @@ error() {
     echo -e "${RED}[$(date +'%Y-%m-%dT%H:%M:%S%z')] ERROR: $1${NC}"
     exit 1
 }
+
+# Grant service account access to the bucket
+log "Granting bucket access to service account..."
+gsutil iam ch serviceAccount:${SERVICE_ACCOUNT}:objectAdmin gs://${STORAGE_BUCKET}
 
 # Verify gcloud configuration
 log "Verifying gcloud configuration..."
@@ -52,11 +57,11 @@ gcloud run deploy $SERVICE_NAME \
     --region $REGION \
     --platform managed \
     --service-account $SERVICE_ACCOUNT \
-    --set-secrets=OPENAI_API_KEY=OPENAI_API_KEY:latest,APP_URL=APP_URL:latest,LEMON_SQUEEZY_STORE_ID=LEMON_SQUEEZY_STORE_ID:latest,LEMON_SQUEEZY_VARIANT_ID_BUNDLE=LEMON_SQUEEZY_VARIANT_ID_BUNDLE:latest,LEMON_SQUEEZY_VARIANT_ID=LEMON_SQUEEZY_VARIANT_ID:latest,LEMON_API_KEY=LEMON_API_KEY:latest,LEMON_SQUEEZY_WEBHOOK_SECRET=LEMON_SQUEEZY_WEBHOOK_SECRET:latest,ADMIN_API_KEY=ADMIN_API_KEY:latest \
+    --set-secrets=OPENAI_API_KEY=OPENAI_API_KEY:latest,APP_URL=APP_URL:latest,LEMON_SQUEEZY_STORE_ID=LEMON_SQUEEZY_STORE_ID:latest,LEMON_SQUEEZY_VARIANT_ID_BUNDLE=LEMON_SQUEEZY_VARIANT_ID_BUNDLE:latest,LEMON_SQUEEZY_VARIANT_ID=LEMON_SQUEEZY_VARIANT_ID:latest,LEMON_API_KEY=LEMON_API_KEY:latest,LEMON_SQUEEZY_WEBHOOK_SECRET=LEMON_SQUEEZY_WEBHOOK_SECRET:latest,ADMIN_API_KEY=ADMIN_API_KEY:latest,CSRF_SECRET=CSRF_SECRET:latest \
     --set-env-vars="NODE_ENV=production,DATA_STORAGE_TYPE=cloud-storage,STORAGE_BUCKET=cv-opt-user-data"
     --timeout=300 \
     --min-instances=1 \
-    --max-instances=100 \
+    --max-instances=10 \
     --cpu=1 \
     --memory=512Mi \
     --allow-unauthenticated
