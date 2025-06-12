@@ -383,7 +383,6 @@ app.post('/api/create-checkout', express.json(), async (req, res) => {
 app.post('/webhooks/lemonsqueezy', express.raw({ type: 'application/json' }), async (req, res) => {
   try {
     logger.info("🔥 Webhook received at /webhooks/lemonsqueezy");
-    logger.info(`WEBHOOK RECEIVED: ${JSON.stringify(payload, null, 2)}`);
 
     // 1️⃣ Extract signature from headers
     const signature = req.get('x-signature');
@@ -429,6 +428,7 @@ app.post('/webhooks/lemonsqueezy', express.raw({ type: 'application/json' }), as
 
     // 7️⃣ Parse the webhook payload
     const payload = JSON.parse(bodyStr);
+    logger.info(`WEBHOOK RECEIVED: ${JSON.stringify(payload, null, 2)}`);
     logger.debug('Webhook payload (first 500 chars):', JSON.stringify(payload).slice(0, 500));
       
     if (!payload?.meta?.event_name || !payload?.data) {
