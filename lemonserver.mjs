@@ -935,6 +935,32 @@ app.get('/api/debug-variant/:variantId', async (req, res) => {
   }
 });
 
+// Add this debug endpoint to lemonserver.mjs
+app.get('/api/debug-product/:productId', async (req, res) => {
+  try {
+    const productId = req.params.productId;
+    
+    const response = await fetch(`https://api.lemonsqueezy.com/v1/products/${productId}`, {
+      headers: {
+        'Authorization': `Bearer ${process.env.LEMON_API_KEY}`,
+        'Accept': 'application/vnd.api+json'
+      }
+    });
+    
+    const data = await response.json();
+    
+    res.json({
+      status: response.status,
+      productId: productId,
+      product: data.data?.attributes,
+      storeId: data.data?.attributes?.store_id,
+      envStoreId: process.env.LEMON_SQUEEZY_STORE_ID
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Admin endpoint to view free pass stats
 app.get('/api/admin/free-pass-stats', express.json(), async (req, res) => {
   try {
