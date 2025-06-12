@@ -314,12 +314,69 @@ if (missingEnvVars.length > 0) {
   // Don't exit - Cloud Run will handle this
 }
 
+// Add after environment variable checks (around line 125)
+const OPENAI_TIMEOUT = parseInt(process.env.OPENAI_TIMEOUT || '240000');
+const JOB_FETCH_TIMEOUT = parseInt(process.env.JOB_FETCH_TIMEOUT || '30000');
+const MAX_PROCESSING_TIME = parseInt(process.env.MAX_PROCESSING_TIME || '600000'); // 5 minutes
+
+logger.info(`Timeouts configured - OpenAI: ${OPENAI_TIMEOUT}ms, Job Fetch: ${JOB_FETCH_TIMEOUT}ms`);
+
 // -------------------------------------------------------------------
 // Initialize OpenAI
 // -------------------------------------------------------------------
 logger.debug('Initializing OpenAI client...');
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
+});
+
+// Test OpenAI connectivity on startup
+async function testOpenAIConnection() {
+  // First check if API key exists
+  if (!process.env.OPENAI_API_KEY) {
+    logger.error('❌ OpenAI API key is not set in environment variables');
+    return false;
+  }
+  
+  logger.info(`Testing OpenAI connection with API key: ${process.env.OPENAI_API_KEY.substring(0, 10)}...`);
+  
+  try {
+    const testResponse = await openai.chat.completions.create({
+      model: "gpt-4.1-nano",
+      messages: [{ role: "user", content: "Test" }],
+    });
+    
+    // Actually verify we got a valid response
+    if (testResponse.choices && testResponse.choices.length > 0) {
+      logger.info('✅ OpenAI API connection verified');
+      return true;
+    } else {
+      logger.error('❌ OpenAI API returned invalid response structure');
+      return false;
+    }
+  } catch (error) {
+    // Log the full error details
+    logger.error('❌ OpenAI API connection failed:', {
+      message: error.message || 'No error message',
+      type: error.type || 'Unknown error type',
+      code: error.code || 'No error code',
+      status: error.status || 'No status',
+      fullError: JSON.stringify(error, null, 2)
+    });
+    
+    // Common error causes
+    if (error.status === 401) {
+      logger.error('Invalid API key. Please check your OPENAI_API_KEY environment variable.');
+    } else if (error.code === 'ENOTFOUND') {
+      logger.error('Network error. Cannot reach OpenAI API servers.');
+    }
+    
+    return false;
+  }
+}
+
+// Call it immediately (no server event needed)
+testOpenAIConnection().catch(err => {
+  logger.error('Failed to test OpenAI connection:', err);
 });
 
 // -------------------------------------------------------------------
@@ -420,7 +477,7 @@ app.post('/partial', async (req, res) => {
     }
 
     const partialResponse = await openai.chat.completions.create({
-      model: "o4-mini",
+      model: "gpt-4.1-nano",
       messages: conversation,
     });
 
@@ -568,7 +625,7 @@ app.post('/refine', async (req, res) => {
     logger.debug(`keywordsPrompt: ${keywordsPrompt.slice(0,300)}...`);
 
     const keywordsResp = await openai.chat.completions.create({
-      model: "o4-mini",
+      model: "gpt-4.1-nano",
       messages: [{ role: "user", content: keywordsPrompt }],
     });
     logger.debug(`keywordsResp raw: ${JSON.stringify(keywordsResp, null, 2).slice(0,500)}...`);
@@ -594,7 +651,7 @@ app.post('/refine', async (req, res) => {
     // 5. Call the model again with the updated conversation
     // -------------------------------------------------------------------
     const refineResp = await openai.chat.completions.create({
-      model: "o4-mini",
+      model: "gpt-4.1-nano",
       messages: newConversation,
     });
     logger.debug(`refineResp raw: ${JSON.stringify(refineResp, null, 2).slice(0,500)}...`);
@@ -676,144 +733,194 @@ app.post('/refine', async (req, res) => {
   }
 });
 
-// Helper function to process refinement asynchronously (for webhook calls)
-   async function processRefinementAsync(data, logger) {
+/// In index.mjs, replace the processRefinementAsync function starting around line 1067
+async function processRefinementAsync(data, logger) {
+  const startTime = Date.now();
+  let stage = 'initialization';
+  
+  try {
+    const { jobUrl, cvHTML, refinementLevel, conversation = [], jobId, tabSessionId } = data;
+    
+    logger.info(`Background process started for jobId: ${jobId}`);
+    logger.info(`Background process received refinement level: ${refinementLevel}`);
+    
+    // Parse refinement level
+    let level = 5;
+    if (refinementLevel !== undefined && refinementLevel !== null) {
+      const parsed = parseInt(refinementLevel, 10);
+      if (!isNaN(parsed) && parsed >= 1 && parsed <= 10) {
+        level = parsed;
+      }
+    }
+    
+    logger.info(`Background process using refinement level: ${level}`);
+    
+    // 1. Fetch the job page with timeout
+    stage = 'fetching job page';
+    logger.info("Background: Fetching job description page...");
+    
+    const controller = new AbortController();
+    const fetchTimeout = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+    
     try {
-      const { jobUrl, cvHTML, refinementLevel, conversation = [], jobId } = data;
+      const jobResponse = await fetch(jobUrl, { 
+        signal: controller.signal,
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (compatible; CVOptimizer/1.0)'
+        }
+      });
+      clearTimeout(fetchTimeout);
       
-      // Enhanced logging for the background process
-      logger.info(`Background process received refinement level: ${refinementLevel}`);
+      if (!jobResponse.ok) {
+        throw new Error(`Failed to fetch job page: ${jobResponse.status} ${jobResponse.statusText}`);
+      }
       
-      // Parse the refinement level with the same robust approach
-      let level = 5; // Default
+      const jobHtml = await jobResponse.text();
+      logger.info(`Job page fetched successfully, size: ${jobHtml.length} bytes`);
       
-      if (refinementLevel !== undefined && refinementLevel !== null) {
-        const parsed = parseInt(refinementLevel, 10);
-        if (!isNaN(parsed) && parsed >= 1 && parsed <= 10) {
-          level = parsed;
+      // 2. Extract text from job page
+      stage = 'extracting job text';
+      const $ = load(jobHtml);
+      const jobTextRaw = $('body').text() || "";
+      const jobDescription = jobTextRaw.replace(/\s+/g, ' ').trim();
+      logger.info(`Job description extracted, length: ${jobDescription.length} chars`);
+      
+      // 3. Extract keywords - with timeout and retry
+      stage = 'extracting keywords';
+      logger.info("Using OpenAI to extract keywords...");
+      
+      const keywordsPrompt = `Extract the key: skills, qualifications, keywords, and optimization recommendations from this job description so we can pass ATS systems. Return them line-separated:\n\n"${jobDescription.slice(0, 3000)}"`;
+      
+      let extractedKeywords = '';
+      let retries = 0;
+      const maxRetries = 3;
+      
+      while (retries < maxRetries) {
+        try {
+          const keywordsResp = await Promise.race([
+            openai.chat.completions.create({
+              model: "gpt-4.1-nano",
+              messages: [{ role: "user", content: keywordsPrompt }],
+            }),
+            new Promise((_, reject) => 
+              setTimeout(() => reject(new Error('OpenAI keywords timeout')), 45000)
+            )
+          ]);
+          
+          extractedKeywords = keywordsResp.choices[0].message.content.trim();
+          logger.info(`Keywords extracted successfully on attempt ${retries + 1}`);
+          break;
+        } catch (error) {
+          retries++;
+          logger.error(`Keywords extraction attempt ${retries} failed: ${error.message}`);
+          if (retries >= maxRetries) throw error;
+          await new Promise(resolve => setTimeout(resolve, 2000 * retries)); // Exponential backoff
         }
       }
       
-      logger.info(`Background process using refinement level: ${level}`);
-      
-    // 1. Fetch the job page
-    logger.info("Background: Fetching job description page...");
-    const jobResponse = await fetch(jobUrl);
-    if (!jobResponse.ok) {
-      throw new Error('Failed to fetch the job description page.');
-    }
-    
-    const jobHtml = await jobResponse.text();
-    
-    // 2. Extract text from job page
-    const $ = load(jobHtml);
-    const jobTextRaw = $('body').text() || "";
-    const jobDescription = jobTextRaw.replace(/\s+/g, ' ').trim();
-    
-    // 3. Extract keywords from the job description
-    const keywordsPrompt = `Extract the key: skills, qualifications, keywords, and optimization recommendations from this job description so we can pass ATS systems. Return them line-separated:\n\n"${jobDescription}"`;
-    
-    const keywordsResp = await openai.chat.completions.create({
-      model: "o4-mini",
-      messages: [{ role: "user", content: keywordsPrompt }],
-    });
-    
-    const extractedKeywords = keywordsResp.choices[0].message.content.trim();
-    
-    // 4. Create a message for refinement
-    let additionalInstruction = "";
-    if (level <= 3) {
-      additionalInstruction = "Make only minimal changes.";
-    } else if (level <= 7) {
-      additionalInstruction = "Make moderate refinements.";
-    } else {
-      additionalInstruction = "Apply strong, aggressive refinements tailored to the job description.";
-    }
-    
-    const messages = conversation.length > 0 ? [...conversation] : [
-      { role: "user", content: createInitialGreeting() },
-      {
-        role: "user",
-        content: createCVRefinementPrompt(
-          extractedKeywords, 
-          cvHTML, 
-          level, 
-          additionalInstruction
-        )
+      // 4. Create refinement messages
+      stage = 'creating refinement prompt';
+      let additionalInstruction = "";
+      if (level <= 3) {
+        additionalInstruction = "Make only minimal changes.";
+      } else if (level <= 7) {
+        additionalInstruction = "Make moderate refinements.";
+      } else {
+        additionalInstruction = "Apply strong, aggressive refinements tailored to the job description.";
       }
-    ];
+      
+      const messages = conversation.length > 0 ? [...conversation] : [
+        { role: "user", content: createInitialGreeting() },
+        {
+          role: "user",
+          content: createCVRefinementPrompt(
+            extractedKeywords, 
+            cvHTML, 
+            level, 
+            additionalInstruction
+          )
+        }
+      ];
+      
+      // 5. Call OpenAI for refinement - with timeout and retry
+      stage = 'refining CV';
+      logger.info("Calling OpenAI for CV refinement...");
+      logger.info(`CV size: ${cvHTML.length} chars, Messages: ${messages.length}`);
 
-    // 5. Call the model with the messages
-    const refineResp = await openai.chat.completions.create({
-      model: "o4-mini",
-      messages: messages,
-    });
-    
-    const finalReply = refineResp.choices[0].message.content.trim();
-    const cleanedReply = removeMarkdownWrapper(finalReply); // Add this line
+      let finalReply = '';
+      retries = 0;
 
-    logger.info("Background: Refinement completed, CV length:", finalReply.length);
-    logger.debug(`final CV (first 200 chars): ${finalReply.slice(0,200)}`);
+      while (retries < maxRetries) {
+        try {
+          // Log attempt details
+          logger.info(`CV refinement attempt ${retries + 1} starting...`);
+          const startTime = Date.now();
+          
+          const refineResp = await Promise.race([
+            openai.chat.completions.create({
+              model: "gpt-4.1-nano",
+              messages: messages,
+              max_completion_tokens: 32000  // Set high to ensure full output
 
-    // 6. Compute a diff between the original CV and the refined CV
-    const normalize = str => {
-      const withoutTags = str.replace(/<[^>]*>/g, ' ');
-      return withoutTags.replace(/\s+/g, ' ').trim();
-    };
-
-    try {
-      const normalizedOriginal = normalize(cvHTML);
-      const normalizedRefined = normalize(finalReply);
-      const changes = diffWords(normalizedOriginal, normalizedRefined);
+            }),
+            new Promise((_, reject) => 
+              setTimeout(() => reject(new Error('OpenAI refinement timeout')), 180000) // 3 minutes
+            )
+          ]);
+          
+          const duration = Date.now() - startTime;
+          finalReply = refineResp.choices[0].message.content.trim();
+          logger.info(`CV refined successfully on attempt ${retries + 1}, length: ${finalReply.length}, duration: ${duration}ms`);
+          break;
+        } catch (error) {
+          retries++;
+          logger.error(`Refinement attempt ${retries} failed after ${Date.now() - startTime}ms: ${error.message}`);
+          
+          if (retries >= maxRetries) throw error;
+          
+          // Longer backoff for refinement
+          const backoffTime = 5000 * retries;
+          logger.info(`Waiting ${backoffTime}ms before retry...`);
+          await new Promise(resolve => setTimeout(resolve, backoffTime));
+        }
+      }
+      
+      const cleanedReply = removeMarkdownWrapper(finalReply);
+      
+      // 6. Compute diff
+      stage = 'computing diff';
+      logger.info("Computing changes diff...");
+      
+      const normalize = str => {
+        const withoutTags = str.replace(/<[^>]*>/g, ' ');
+        return withoutTags.replace(/\s+/g, ' ').trim();
+      };
       
       let changesHtml = "";
-      for (const part of changes) {
-        const value = part.value.replace(/</g, '&lt;').replace(/>/g, '&gt;');
-        if (part.added) {
-          changesHtml += `<span class="diff-added">${value}</span>`;
-        } else if (part.removed) {
-          changesHtml += `<span class="diff-removed">${value}</span>`;
-        } else {
-          changesHtml += value;
-        }
-      }
-      logger.info("Computed changes diff.");
-
-      // We're done processing - store results with jobId as the key
-      if (jobId) {
-        // Get existing data to preserve any fields
-        const existingData = jobDataStorage.get(jobId) || {};
-        // Store results with all data in one place
-        await setJobData(jobId, {
-          ...existingData,
-          jobUrl,
-          cvHTML,
-          refinedHTML: cleanedReply,
-          changes: changesHtml,
-          extractedKeywords,
-          completedAt: new Date().toISOString()
-        });
+      try {
+        const normalizedOriginal = normalize(cvHTML);
+        const normalizedRefined = normalize(cleanedReply);
+        const changes = diffWords(normalizedOriginal, normalizedRefined);
         
-        logger.info(`✅ Refinement results stored for jobId: ${jobId}`);
-      } else {
-        logger.error("No jobId provided for storing results");
+        for (const part of changes) {
+          const value = part.value.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+          if (part.added) {
+            changesHtml += `<span class="diff-added">${value}</span>`;
+          } else if (part.removed) {
+            changesHtml += `<span class="diff-removed">${value}</span>`;
+          } else {
+            changesHtml += value;
+          }
+        }
+      } catch (diffErr) {
+        logger.error("Error computing diff:", diffErr);
+        changesHtml = null;
       }
       
-      logger.info("Background processing completed successfully");
-
-      return {
-        status: "success",
-        message: "Refinement complete",
-        refinedHTML: cleanedReply,
-        changes: changesHtml,
-        extractedKeywords
-      };
-
-    } catch (diffErr) {
-      logger.error("Error in diff computation:", diffErr);
-      // Return the refined CV even if diff fails
+      // 7. Store results
+      stage = 'storing results';
+      logger.info("Storing refinement results...");
       
-      // Still store the result without changes
       if (jobId) {
         const existingData = await getJobData(jobId) || {};
         await setJobData(jobId, {
@@ -823,20 +930,56 @@ app.post('/refine', async (req, res) => {
           refinedHTML: cleanedReply,
           changes: changesHtml,
           extractedKeywords,
-          completedAt: new Date().toISOString()
+          completedAt: new Date().toISOString(),
+          processingTime: Date.now() - startTime,
+          tabSessionId
         });
+        
+        logger.info(`✅ Refinement completed and stored for jobId: ${jobId} in ${Date.now() - startTime}ms`);
       }
       
-      return { 
+      return {
+        status: "success",
+        message: "Refinement complete",
         refinedHTML: cleanedReply,
-        changes: null,
-        extractedKeywords: extractedKeywords,
-        error: "Could not compute changes diff"
+        changes: changesHtml,
+        extractedKeywords,
+        processingTime: Date.now() - startTime
       };
+      
+    } catch (fetchError) {
+      if (fetchError.name === 'AbortError') {
+        throw new Error('Job page fetch timeout after 30 seconds');
+      }
+      throw fetchError;
     }
-
+    
   } catch (err) {
-    logger.error(`❌ Background processing failed: ${err.message}`);
+    const errorDetails = {
+      message: err.message,
+      stage,
+      jobId: data.jobId,
+      processingTime: Date.now() - startTime,
+      stack: err.stack
+    };
+    
+    logger.error(`❌ Background processing failed at stage '${stage}':`, errorDetails);
+    
+    // Store error state
+    if (data.jobId) {
+      try {
+        const existingData = await getJobData(data.jobId) || {};
+        await setJobData(data.jobId, {
+          ...existingData,
+          error: errorDetails,
+          failedAt: new Date().toISOString(),
+          status: 'failed'
+        });
+      } catch (storeErr) {
+        logger.error('Failed to store error state:', storeErr);
+      }
+    }
+    
     throw err;
   }
 }

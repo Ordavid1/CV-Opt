@@ -1265,6 +1265,22 @@ function pollRefinementStatus(jobId) {
           checkoutButton.textContent = 'Optimize Me!';
           return;
         }
+
+        // Handle error and timeout states
+        if (data.status === 'failed' || data.status === 'timeout') {
+          clearInterval(interval);
+          messageElement.textContent = data.error || 'Refinement process failed. Please try again.';
+          hideSpinner();
+          checkoutButton.disabled = false;
+          checkoutButton.textContent = 'Optimize Me!';
+          
+          // Show a retry option
+          if (typeof showNotification === 'function') {
+            showNotification('❌ ' + (data.error || 'Process timed out. Please try again.'), 'error');
+          }
+          return;
+        }
+
       } else if (data.status === 'pending') {
         // Trigger fallback refinement at halfway point
         if (attempts === Math.floor(maxAttempts / 2)) {
@@ -1372,6 +1388,7 @@ function pollRefinementStatus(jobId) {
         }
       }
       return false;
+      
     } catch (error) {
       return false;
     }

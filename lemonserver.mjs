@@ -675,7 +675,6 @@ app.post('/api/refinement-status', express.json(), async (req, res) => {
     
     logger.info(`Checking refinement status for jobId: ${jobId} with tabSessionId: ${tabSessionId || 'not provided'}`);
     
-    // Use async get from Cloud Storage
     const jobData = await getJobData(jobId);
     
     if (!jobData) {
@@ -686,7 +685,17 @@ app.post('/api/refinement-status', express.json(), async (req, res) => {
       });
     }
     
-    // CHECK IF THIS WAS A BUNDLE PURCHASE
+    // Check for error state
+    if (jobData.status === 'failed' || jobData.error) {
+      logger.error(`Job ${jobId} failed:`, jobData.error);
+      return res.json({
+        status: 'failed',
+        error: jobData.error?.message || 'Refinement process failed',
+        failedAt: jobData.failedAt
+      });
+    }
+    
+    // Check if this was a bundle purchase
     if (jobData.isBundlePurchase) {
       logger.info(`This was a bundle purchase - no refinement needed`);
       return res.json({
@@ -696,7 +705,7 @@ app.post('/api/refinement-status', express.json(), async (req, res) => {
       });
     }
 
-    // Check if this is for a different tab session
+    // Check tab session mismatch
     if (tabSessionId && jobData.tabSessionId && tabSessionId !== jobData.tabSessionId) {
       logger.info(`Tab session mismatch: request has ${tabSessionId}, job has ${jobData.tabSessionId}`);
       return res.json({
@@ -707,19 +716,34 @@ app.post('/api/refinement-status', express.json(), async (req, res) => {
     
     if (jobData.refinedHTML) {
       logger.info(`Refinement results found for jobId: ${jobId}`);
-      // Only return results if tabSessionId matches or if no tabSessionId was stored
       return res.json({
         status: 'completed',
         refinedHTML: jobData.refinedHTML,
         changes: jobData.changes,
-        extractedKeywords: jobData.extractedKeywords
+        extractedKeywords: jobData.extractedKeywords,
+        processingTime: jobData.processingTime
+      });
+    }
+    
+    // Check if it's been too long
+    const createdAt = new Date(jobData.createdAt);
+    const now = new Date();
+    const minutesElapsed = (now - createdAt) / (1000 * 60);
+    
+    if (minutesElapsed > 5) {
+      logger.warn(`Job ${jobId} has been processing for ${minutesElapsed.toFixed(1)} minutes`);
+      return res.json({
+        status: 'timeout',
+        message: 'Refinement process is taking too long',
+        minutesElapsed: minutesElapsed.toFixed(1)
       });
     }
     
     logger.info(`Refinement still in progress for jobId: ${jobId}`);
     return res.json({
       status: 'processing',
-      message: 'Refinement is still in progress'
+      message: 'Refinement is still in progress',
+      minutesElapsed: minutesElapsed.toFixed(1)
     });
     
   } catch (error) {
