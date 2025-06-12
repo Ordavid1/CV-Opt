@@ -17,7 +17,7 @@ import helmet from 'helmet';
 import crypto from 'crypto';
 import cors from 'cors';
 import rateLimit from 'express-rate-limit';
-import { jobDataStorage, setJobData, getJobData } from './storage.mjs';
+import { jobDataStorage, setJobData, getJobData, initBucket } from './storage.mjs';
 import initLemonSqueezyRoutes from './lemonserver.mjs';
 import { createCVRefinementPrompt, createInitialGreeting } from './public/promptTemplates.mjs';
 
@@ -983,6 +983,9 @@ async function processRefinementAsync(data, logger) {
     throw err;
   }
 }
+
+// Initialize storage bucket for job data
+initBucket().catch(err => logger.error(`Error initializing Cloud Storage bucket: ${err.message}`));
 
 const server = http.createServer(app);
 

@@ -375,5 +375,14 @@ if (DATA_STORAGE_TYPE !== 'memory' && DATA_STORAGE_TYPE !== 'cloud-storage') {
 // Initialize when module is loaded - MOVE TO THE VERY END
 initFreePassStorage();
 initCreditsStorage(); // Now this will work because DATA_STORAGE_TYPE is defined
+
+// Initialize Cloud Storage bucket if using cloud-storage
+if (DATA_STORAGE_TYPE === 'cloud-storage') {
+  initBucket().catch(err => logger.error(`Error initializing Cloud Storage bucket: ${err.message}`));
+}
+
 // Call this at startup
 initBucket();
+
+// Export initBucket to allow initialization in index.mjs
+export { initBucket };
