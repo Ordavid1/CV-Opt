@@ -31,8 +31,8 @@ const FREE_PASS_FILE = path.join(__dirname, 'data', 'free-passes.json');
 const FREE_PASS_USERS_FILE = path.join(__dirname, 'data', 'free-pass-users.json');
 const CREDITS_FILE = path.join(__dirname, 'data', 'user-credits.json');
 
-// Storage type from environment variable (memory or file)
-const DATA_STORAGE_TYPE = process.env.DATA_STORAGE_TYPE || 'memory';
+// Storage type from environment variable, default to cloud-storage if STORAGE_BUCKET env var is provided
+const DATA_STORAGE_TYPE = process.env.DATA_STORAGE_TYPE || (process.env.STORAGE_BUCKET ? 'cloud-storage' : 'memory');
 
 // Initialize Google Cloud Storage
 const storage = new Storage();
@@ -62,9 +62,8 @@ async function initBucket() {
 export async function setJobData(jobId, data) {
   // Always store in memory for fast access
   jobDataStorage.set(jobId, data);
-  
-  // If using cloud storage, also persist there
-  if (DATA_STORAGE_TYPE === 'cloud-storage' && bucket) {
+  // Persist to Cloud Storage if bucket is initialized
+  if (bucket) {
     try {
       const file = bucket.file(`jobs/${jobId}.json`);
       await file.save(JSON.stringify(data), {
@@ -80,17 +79,14 @@ export async function setJobData(jobId, data) {
 export async function getJobData(jobId) {
   // Try memory first
   let data = jobDataStorage.get(jobId);
-  
-  // If not in memory and using cloud storage, try to load it
-  if (!data && DATA_STORAGE_TYPE === 'cloud-storage' && bucket) {
+  // If not in memory and bucket is available, try to load it
+  if (!data && bucket) {
     try {
       const file = bucket.file(`jobs/${jobId}.json`);
       const [exists] = await file.exists();
-      
       if (exists) {
         const [content] = await file.download();
         data = JSON.parse(content.toString());
-        // Cache in memory
         jobDataStorage.set(jobId, data);
         console.log(`Job data loaded from Cloud Storage: ${jobId}`);
       }
@@ -98,7 +94,6 @@ export async function getJobData(jobId) {
       console.error(`Error loading job data from Cloud Storage: ${error.message}`);
     }
   }
-  
   return data;
 }
 
@@ -372,17 +367,10 @@ if (DATA_STORAGE_TYPE !== 'memory' && DATA_STORAGE_TYPE !== 'cloud-storage') {
   }, 60000); // Save every minute
 }
 
-// Initialize when module is loaded - MOVE TO THE VERY END
-initFreePassStorage();
-initCreditsStorage(); // Now this will work because DATA_STORAGE_TYPE is defined
+// Immediately initialize Cloud Storage bucket when module loads
+initBucket()
+  .then(() => logger.info(`✅ Cloud Storage bucket "${bucketName}" initialized`))
+  .catch(err => logger.error(`Error initializing Cloud Storage bucket: ${err.message}`));
 
-// Initialize Cloud Storage bucket if using cloud-storage
-if (DATA_STORAGE_TYPE === 'cloud-storage') {
-  initBucket().catch(err => logger.error(`Error initializing Cloud Storage bucket: ${err.message}`));
-}
-
-// Call this at startup
-initBucket();
-
-// Export initBucket to allow initialization in index.mjs
+// Export initBucket so it can be invoked at server startup
 export { initBucket };

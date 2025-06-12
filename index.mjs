@@ -694,8 +694,9 @@ app.post('/refine', async (req, res) => {
 
       // Store results using jobId as the key if provided
       if (jobId) {
-        const existingData = jobDataStorage.get(jobId) || {};
-        jobDataStorage.set(jobId, {
+        // Persist results via setJobData for reliable retrieval
+        const existingData = await getJobData(jobId) || {};
+        await setJobData(jobId, {
           ...existingData,
           jobUrl,
           cvHTML,
@@ -705,7 +706,7 @@ app.post('/refine', async (req, res) => {
           completedAt: new Date().toISOString(),
           tabSessionId, // Include tabSessionId in the stored results
         });
-        logger.info(`✅ Refinement results stored for jobId: ${jobId} with tabSessionId: ${tabSessionId}`);
+        logger.info(`✅ Refinement results persisted for jobId: ${jobId} with tabSessionId: ${tabSessionId}`);
       }
 
       return res.json({ 
@@ -828,7 +829,6 @@ async function processRefinementAsync(data, logger) {
       } else {
         additionalInstruction = "Apply strong, aggressive refinements tailored to the job description.";
       }
-      
       const messages = conversation.length > 0 ? [...conversation] : [
         { role: "user", content: createInitialGreeting() },
         {
@@ -841,50 +841,33 @@ async function processRefinementAsync(data, logger) {
           )
         }
       ];
-      
-      // 5. Call OpenAI for refinement - with timeout and retry
-      stage = 'refining CV';
-      logger.info("Calling OpenAI for CV refinement...");
-      logger.info(`CV size: ${cvHTML.length} chars, Messages: ${messages.length}`);
 
+      // 5. Call OpenAI for refinement – fetch only once, then retry LLM calls
+      stage = 'refining CV';
+      logger.info("Calling OpenAI for CV refinement with retry loop...");
       let finalReply = '';
       retries = 0;
-
       while (retries < maxRetries) {
         try {
-          // Log attempt details
-          logger.info(`CV refinement attempt ${retries + 1} starting...`);
-          const startTime = Date.now();
-          
+          logger.info(`LLM refinement attempt ${retries + 1} starting...`);
           const refineResp = await Promise.race([
             openai.chat.completions.create({
               model: "gpt-4.1-nano",
               messages: messages,
-              max_completion_tokens: 32000  // Set high to ensure full output
-
+              max_completion_tokens: 32000
             }),
-            new Promise((_, reject) => 
-              setTimeout(() => reject(new Error('OpenAI refinement timeout')), 180000) // 3 minutes
-            )
+            new Promise((_, reject) => setTimeout(() => reject(new Error('OpenAI refinement timeout')), 180000))
           ]);
-          
-          const duration = Date.now() - startTime;
           finalReply = refineResp.choices[0].message.content.trim();
-          logger.info(`CV refined successfully on attempt ${retries + 1}, length: ${finalReply.length}, duration: ${duration}ms`);
+          logger.info(`LLM refinement succeeded on attempt ${retries + 1}, length: ${finalReply.length}`);
           break;
         } catch (error) {
           retries++;
-          logger.error(`Refinement attempt ${retries} failed after ${Date.now() - startTime}ms: ${error.message}`);
-          
+          logger.warn(`LLM attempt ${retries} failed: ${error.message}, retrying...`);
           if (retries >= maxRetries) throw error;
-          
-          // Longer backoff for refinement
-          const backoffTime = 5000 * retries;
-          logger.info(`Waiting ${backoffTime}ms before retry...`);
-          await new Promise(resolve => setTimeout(resolve, backoffTime));
+          await new Promise(resolve => setTimeout(resolve, 2000 * retries));
         }
       }
-      
       const cleanedReply = removeMarkdownWrapper(finalReply);
       
       // 6. Compute diff
@@ -922,6 +905,7 @@ async function processRefinementAsync(data, logger) {
       logger.info("Storing refinement results...");
       
       if (jobId) {
+        // Use setJobData to persist results to storage
         const existingData = await getJobData(jobId) || {};
         await setJobData(jobId, {
           ...existingData,
@@ -984,38 +968,33 @@ async function processRefinementAsync(data, logger) {
   }
 }
 
-// Initialize storage bucket for job data
-initBucket().catch(err => logger.error(`Error initializing Cloud Storage bucket: ${err.message}`));
-
+// Create HTTP server instance
 const server = http.createServer(app);
 
-server.listen(PORT, HOST, () => {
-  logger.info(`Server running at http://${HOST}:${PORT}`);
-  console.log(`Server is listening on port ${PORT}`);
-});
+// Start server once Cloud Storage bucket is initialized
+initBucket()
+  .then(() => {
+    logger.info('✅ Cloud Storage bucket initialized, starting server');
+    server.listen(PORT, HOST, () => {
+      logger.info(`Server running at http://${HOST}:${PORT}`);
+      console.log(`Server is listening on port ${PORT}`);
+    });
 
-server.on('error', (error) => {
-  logger.error('Server error:', error.message);
-  if (error.code === 'EADDRINUSE') {
-    logger.error(`Port ${PORT} is already in use`);
+    server.on('error', (error) => {
+      logger.error('Server error:', error.message);
+      if (error.code === 'EADDRINUSE') {
+        logger.error(`Port ${PORT} is already in use`);
+        process.exit(1);
+      }
+    });
+  })
+  .catch(err => {
+    logger.error(`❌ Failed to initialize Cloud Storage bucket: ${err.message}`);
     process.exit(1);
-  }
-});
-
-// Export the server and app for use in other parts of your code
-export { app, server };
-
-// -------------------------------------------------------------------
-// Serve index.html if needed
-// -------------------------------------------------------------------
-app.use((err, _req, res, _next) => {
-  logger.error('Unhandled error:', err);
-  res.status(500).json({ 
-    error: process.env.NODE_ENV === 'production' ? 
-      'Internal server error' : 
-      err.message 
   });
-});
+
+// Export application and background processing function
+export { app, processRefinementAsync };
 
 /*
 // Start everything

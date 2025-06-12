@@ -101,7 +101,18 @@ export default function initLemonSqueezyRoutes(app, logger) {
 app.post('/api/store-job-data', express.json(), async (req, res) => {
   try {
     logger.info("Storing job data before checkout");
-    logger.debug(`Direct body access: ${JSON.stringify(req.body)}`);
+    // Selective debug: only key fields and trimmed cvHTML preview
+    const url = req.body.jobUrl;
+    const level = req.body.refinementLevel;
+    const tabId = req.body.tabSessionId;
+    const html = req.body.cvHTML;
+    let cvPreview = '';
+    if (html && typeof html === 'string') {
+      const first50 = html.slice(0, 50);
+      const last50 = html.slice(-50);
+      cvPreview = `${first50}...${last50}`;
+    }
+    logger.debug(`Job data received: jobUrl=${url}, refinementLevel=${level}, tabSessionId=${tabId}, cvHTMLPreview=${cvPreview}`);
     
     // Check for rate limiting by user ID
     const userId = generateUserId(req);
@@ -634,31 +645,23 @@ if (!jobId) {
           }
         logger.info(`Using final refinement level for processing: ${finalRefinementLevel}`);
         
-        // Trigger refinement process with data
+        // Trigger refinement process in-process (avoid HTTP loop)
         try {
-          const refineResponse = await fetch(`${process.env.APP_URL || 'http://localhost:8080'}/refine`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              orderId,
-              jobId,
-              tabSessionId, // Include this in the refinement request
-              conversation: [],
-              jobUrl: jobData.jobUrl,
-              cvHTML: jobData.cvHTML,
-              refinementLevel: finalRefinementLevel
-            })
+          logger.info(`🔄 Starting in-process refinement for jobId: ${jobId} at level: ${finalRefinementLevel}`);
+          // Import processRefinementAsync from index.mjs
+          const { processRefinementAsync } = await import('./index.mjs');
+          processRefinementAsync({
+            orderId,
+            jobId,
+            tabSessionId,
+            conversation: [],
+            jobUrl: jobData.jobUrl,
+            cvHTML: jobData.cvHTML,
+            refinementLevel: finalRefinementLevel
+          }, logger).catch(err => {
+            logger.error(`❌ Background refinement error for jobId ${jobId}: ${err.message}`, err);
           });
-
-          // Handle response from `/refine`
-          if (!refineResponse.ok) {
-            const errorMsg = await refineResponse.text();
-            logger.error(`❌ Failed to trigger refinement process: ${errorMsg}`);
-            return res.status(500).json({ error: "Refinement process failed" });
-          }
-
-          logger.info(`✅ Refinement process started with level: ${finalRefinementLevel}`);
-
+          logger.info(`✅ In-process refinement initiated for jobId: ${jobId}`);
           return res.status(200).json({
             received: true,
             status: 'paid',
@@ -666,9 +669,9 @@ if (!jobId) {
             jobId,
             refinementLevel: finalRefinementLevel
           });
-        } catch (refineError) {
-          logger.error(`❌ Error triggering refinement: ${refineError.message}`);
-          return res.status(500).json({ error: "Error triggering refinement process" });
+        } catch (err) {
+          logger.error(`❌ Error initiating in-process refinement for jobId ${jobId}: ${err.message}`);
+          return res.status(500).json({ error: "Error starting refinement process" });
         }
       }
     }
