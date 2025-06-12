@@ -289,14 +289,6 @@ app.post('/api/create-checkout', express.json(), async (req, res) => {
     
     // If no free pass or already used, continue with normal checkout process
     logger.info(`No free pass available for user, creating paid checkout`);
-    logger.info(`
-      ============ CHECKOUT CREATION DEBUG ============
-      Bundle Type: ${bundleType}
-      Selected Variant ID: ${bundleType === 'bundle' ? process.env.LEMON_SQUEEZY_VARIANT_ID_BUNDLE : process.env.LEMON_SQUEEZY_VARIANT_ID}
-      Store ID: ${process.env.LEMON_SQUEEZY_STORE_ID}
-      Job ID: ${jobId}
-      ==============================================
-    `);
 
     // Add tabSessionId to checkout data for webhook processing
     const payload = {
@@ -332,9 +324,8 @@ app.post('/api/create-checkout', express.json(), async (req, res) => {
         }
       }
     };
-    logger.info(`FULL PAYLOAD TO LEMON SQUEEZY:\n${JSON.stringify(payload, null, 2)}`);
-    logger.info(`Sending checkout creation request with refinement level: ${jobData.refinementLevel}`);
     
+    logger.info(`Sending checkout creation request with refinement level: ${jobData.refinementLevel}`);
     const response = await fetchWithRetry('https://api.lemonsqueezy.com/v1/checkouts', {
       method: 'POST',
       headers: {
@@ -349,13 +340,9 @@ app.post('/api/create-checkout', express.json(), async (req, res) => {
     logger.debug(`Lemon Squeezy API response: ${JSON.stringify(responseData)}`);
     
     if (!response.ok) {
-      const errorBody = await response.text();
-      logger.error(`LEMON SQUEEZY ERROR RESPONSE:
-        Status: ${response.status}
-        Body: ${errorBody}
-        Variant Used: ${bundleType === 'bundle' ? process.env.LEMON_SQUEEZY_VARIANT_ID_BUNDLE : process.env.LEMON_SQUEEZY_VARIANT_ID}
-      `);
-      throw new Error(`API error: ${response.status} ${response.statusText} - ${errorBody}`);
+      // Don't try to read the body again if it was already logged
+      logger.error('Lemon Squeezy API error: Status ' + response.status);
+      throw new Error(`API error: ${response.status} ${response.statusText}`);
     }
 
     const checkoutUrl = responseData.data?.attributes?.url;
@@ -428,7 +415,6 @@ app.post('/webhooks/lemonsqueezy', express.raw({ type: 'application/json' }), as
 
     // 7️⃣ Parse the webhook payload
     const payload = JSON.parse(bodyStr);
-    logger.info(`WEBHOOK RECEIVED: ${JSON.stringify(payload, null, 2)}`);
     logger.debug('Webhook payload (first 500 chars):', JSON.stringify(payload).slice(0, 500));
       
     if (!payload?.meta?.event_name || !payload?.data) {
@@ -464,12 +450,6 @@ app.post('/webhooks/lemonsqueezy', express.raw({ type: 'application/json' }), as
           userId = customData.userId;
           
           logger.info(`Found custom data - jobId: ${jobId}, bundle: ${bundleType}, userId: ${userId}`);
-            // Specifically log order details
-            if (payload.data?.attributes) {
-              logger.info(`Order Status: ${payload.data.attributes.status}`);
-              logger.info(`Order Total: ${payload.data.attributes.total}`);
-              logger.info(`Order Test Mode: ${payload.data.attributes.test_mode}`);
-            }
         }
 
         // ADD THIS: Method 1.5 - Get userId from customer email
@@ -926,114 +906,6 @@ app.get('/api/check-credits', (req, res) => {
     hasCredits: credits > 0,
     userId: userId.substring(0, 8) + '...'
   });
-});
-
-// Add this temporary debug endpoint
-app.get('/api/debug-variant/:variantId', async (req, res) => {
-  try {
-    const variantId = req.params.variantId;
-    
-    // Try to fetch the variant directly
-    const response = await fetch(`https://api.lemonsqueezy.com/v1/variants/${variantId}`, {
-      headers: {
-        'Authorization': `Bearer ${process.env.LEMON_API_KEY}`,
-        'Accept': 'application/vnd.api+json'
-      }
-    });
-    
-    const data = await response.json();
-    
-    res.json({
-      status: response.status,
-      variantId: variantId,
-      apiKeyPrefix: process.env.LEMON_API_KEY?.substring(0, 20) + '...',
-      storeId: process.env.LEMON_SQUEEZY_STORE_ID,
-      response: data
-    });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// Add this debug endpoint to lemonserver.mjs
-app.get('/api/debug-product/:productId', async (req, res) => {
-  try {
-    const productId = req.params.productId;
-    
-    const response = await fetch(`https://api.lemonsqueezy.com/v1/products/${productId}`, {
-      headers: {
-        'Authorization': `Bearer ${process.env.LEMON_API_KEY}`,
-        'Accept': 'application/vnd.api+json'
-      }
-    });
-    
-    const data = await response.json();
-    
-    res.json({
-      status: response.status,
-      productId: productId,
-      product: data.data?.attributes,
-      storeId: data.data?.attributes?.store_id,
-      envStoreId: process.env.LEMON_SQUEEZY_STORE_ID
-    });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-app.get('/api/debug-variant-compare', async (req, res) => {
-  try {
-    const single = process.env.LEMON_SQUEEZY_VARIANT_ID;
-    const bundle = process.env.LEMON_SQUEEZY_VARIANT_ID_BUNDLE;
-    
-    // Fetch both variants
-    const [singleResp, bundleResp] = await Promise.all([
-      fetch(`https://api.lemonsqueezy.com/v1/variants/${single}`, {
-        headers: {
-          'Authorization': `Bearer ${process.env.LEMON_API_KEY}`,
-          'Accept': 'application/vnd.api+json'
-        }
-      }),
-      fetch(`https://api.lemonsqueezy.com/v1/variants/${bundle}`, {
-        headers: {
-          'Authorization': `Bearer ${process.env.LEMON_API_KEY}`,
-          'Accept': 'application/vnd.api+json'
-        }
-      })
-    ]);
-    
-    const [singleData, bundleData] = await Promise.all([
-      singleResp.json(),
-      bundleResp.json()
-    ]);
-    
-    res.json({
-      single: {
-        id: single,
-        attributes: singleData.data?.attributes
-      },
-      bundle: {
-        id: bundle,
-        attributes: bundleData.data?.attributes
-      },
-      differences: {
-        pay_what_you_want: {
-          single: singleData.data?.attributes?.pay_what_you_want,
-          bundle: bundleData.data?.attributes?.pay_what_you_want
-        },
-        min_price: {
-          single: singleData.data?.attributes?.min_price,
-          bundle: bundleData.data?.attributes?.min_price
-        },
-        price: {
-          single: singleData.data?.attributes?.price,
-          bundle: bundleData.data?.attributes?.price
-        }
-      }
-    });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
 });
 
 // Admin endpoint to view free pass stats

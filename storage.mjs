@@ -154,13 +154,18 @@ export function saveCreditsStorage() {
 // Initialize free pass storage
 function initFreePassStorage() {
   try {
-    // Only initialize file storage if not using memory storage
-    if (DATA_STORAGE_TYPE !== 'memory') {
+    // Only initialize file storage if not using memory or cloud storage
+    if (DATA_STORAGE_TYPE !== 'memory' && DATA_STORAGE_TYPE !== 'cloud-storage') {
       // Create data directory if it doesn't exist
       const dataDirectory = path.join(__dirname, 'data');
-      if (!fs.existsSync(dataDirectory)) {
-        fs.mkdirSync(dataDirectory, { recursive: true });
-        console.log(`Created data directory at ${dataDirectory}`);
+      try {
+        if (!fs.existsSync(dataDirectory)) {
+          fs.mkdirSync(dataDirectory, { recursive: true });
+          console.log(`Created data directory at ${dataDirectory}`);
+        }
+      } catch (mkdirError) {
+        console.log('Unable to create data directory - using in-memory storage');
+        return; // Skip file operations
       }
       
       // Load existing data if available
@@ -332,7 +337,7 @@ export function getFreePassUserCount() {
 }
 
 // Auto-save interval to ensure durability (skip for memory storage)
-if (DATA_STORAGE_TYPE !== 'memory') {
+if (DATA_STORAGE_TYPE !== 'memory' && DATA_STORAGE_TYPE !== 'cloud-storage') {
   setInterval(() => {
     saveFreePassUsage();
     saveCreditsStorage(); // Also save credits periodically
