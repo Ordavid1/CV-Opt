@@ -516,42 +516,70 @@ app.post('/webhooks/lemonsqueezy', express.raw({ type: 'application/json' }), as
         }
 
         // If not a bundle purchase, continue with the jobId extraction logic
-        if (!jobId) {
-          // Option 2: From meta_data if available
-          if (payload.data.attributes?.meta_data?.jobId) {
-            jobId = payload.data.attributes.meta_data.jobId;
-            refinementLevel = payload.data.attributes.meta_data.refinementLevel;
-            logger.info(`Found jobId (${jobId}) and refinement level (${refinementLevel}) from meta_data`);
-          }
-        // Option 3: Look for the most recent job data if jobId not found
-        else {
-          logger.warn("No jobId found in webhook payload, looking for most recent job");
-          
-          // Get all keys from jobDataStorage and sort by creation time
-          const allJobIds = [...jobDataStorage.keys()]; // Keep this for now
-          if (allJobIds.length > 0) {
-            // Sort by creation time (most recent first)
-            allJobIds.sort((a, b) => {
-              const timeA = jobDataStorage.get(a)?.createdAt || '';
-              const timeB = jobDataStorage.get(b)?.createdAt || '';
-              return timeB.localeCompare(timeA);
-            });
-            
-            // Use the most recent jobId
-            jobId = allJobIds[0];
-            const jobData = await getJobData(jobId);
-            refinementLevel = jobData?.refinementLevel || 5;
-            
-            // EXTRACT userId FROM JOB DATA - ADD THIS
-            if (jobData?.userId) {
-              userId = jobData.userId;
-              logger.info(`Extracted userId from most recent job data: ${userId.substring(0, 8)}...`);
-            }
-            
-            logger.info(`Using most recent jobId: ${jobId} with refinement level: ${refinementLevel}`);
-          }
-        }
+// Around line 450 in the webhook handler, replace this section:
+if (!jobId) {
+  logger.warn("No jobId found in webhook payload, looking for most recent job");
+  
+  // First try in-memory storage
+  const allJobIds = [...jobDataStorage.keys()];
+  
+  if (allJobIds.length === 0 && bucket) {
+    // If no jobs in memory, try Cloud Storage
+    logger.info("No jobs in memory, searching Cloud Storage...");
+    
+    try {
+      // List all job files
+      const [files] = await bucket.getFiles({
+        prefix: 'jobs/',
+        maxResults: 100,
+        orderBy: 'created desc'
+      });
+      
+      if (files.length > 0) {
+        // Get the most recent file
+        const mostRecentFile = files[0];
+        const jobId = mostRecentFile.name.replace('jobs/', '').replace('.json', '');
+        
+        logger.info(`Found most recent job in Cloud Storage: ${jobId}`);
+        
+        // Load the job data
+        const [content] = await mostRecentFile.download();
+        const jobData = JSON.parse(content.toString());
+        
+        // Cache it in memory
+        jobDataStorage.set(jobId, jobData);
+        
+        // Use this jobId
+        refinementLevel = jobData.refinementLevel || 5;
+        userId = jobData.userId || userId;
+        
+        logger.info(`Using job from Cloud Storage: ${jobId} with refinement level: ${refinementLevel}`);
+      } else {
+        logger.error("No jobs found in Cloud Storage either");
       }
+    } catch (error) {
+      logger.error("Error searching Cloud Storage for jobs:", error);
+    }
+  } else if (allJobIds.length > 0) {
+    // Use in-memory jobs
+    allJobIds.sort((a, b) => {
+      const timeA = jobDataStorage.get(a)?.createdAt || '';
+      const timeB = jobDataStorage.get(b)?.createdAt || '';
+      return timeB.localeCompare(timeA);
+    });
+    
+    jobId = allJobIds[0];
+    const jobData = await getJobData(jobId);
+    refinementLevel = jobData?.refinementLevel || 5;
+    
+    if (jobData?.userId) {
+      userId = jobData.userId;
+      logger.info(`Extracted userId from most recent job data: ${userId.substring(0, 8)}...`);
+    }
+    
+    logger.info(`Using most recent jobId: ${jobId} with refinement level: ${refinementLevel}`);
+  }
+}
 
         logger.info(`DEBUG: Before bundle check - bundleType: ${bundleType}, userId: ${userId ? userId.substring(0, 8) : 'null'}, jobId: ${jobId}`);
         // CHECK IF THIS IS A BUNDLE PURCHASE - THIS MUST BE HERE, NOT IN THE ELSE BLOCK
