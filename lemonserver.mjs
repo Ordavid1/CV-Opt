@@ -908,6 +908,33 @@ app.get('/api/check-credits', (req, res) => {
   });
 });
 
+// Add this temporary debug endpoint
+app.get('/api/debug-variant/:variantId', async (req, res) => {
+  try {
+    const variantId = req.params.variantId;
+    
+    // Try to fetch the variant directly
+    const response = await fetch(`https://api.lemonsqueezy.com/v1/variants/${variantId}`, {
+      headers: {
+        'Authorization': `Bearer ${process.env.LEMON_API_KEY}`,
+        'Accept': 'application/vnd.api+json'
+      }
+    });
+    
+    const data = await response.json();
+    
+    res.json({
+      status: response.status,
+      variantId: variantId,
+      apiKeyPrefix: process.env.LEMON_API_KEY?.substring(0, 20) + '...',
+      storeId: process.env.LEMON_SQUEEZY_STORE_ID,
+      response: data
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Admin endpoint to view free pass stats
 app.get('/api/admin/free-pass-stats', express.json(), async (req, res) => {
   try {

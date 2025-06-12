@@ -388,7 +388,7 @@ app.get('/', (_req, res, next) => {
   try {
     res.render('index', { 
       nonce,
-      lemonsqueezyVariantId: process.env.LEMON_SQUEEZY_VARIANT_ID || '703669',
+      lemonsqueezyVariantId: process.env.LEMON_SQUEEZY_VARIANT_ID,
       appUrl: process.env.APP_URL || `http://${HOST}:${PORT}` // Changed from protocolUsed to http
     });
   } catch (error) {
