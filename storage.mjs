@@ -4,6 +4,19 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { Storage } from '@google-cloud/storage';
 
+import winston from 'winston';
+
+// Create logger for storage module
+const logger = winston.createLogger({
+  level: 'info',
+  format: winston.format.combine(
+    winston.format.colorize(),
+    winston.format.timestamp(),
+    winston.format.printf(({ timestamp, level, message }) => `${timestamp} [${level}]: ${message}`)
+  ),
+  transports: [new winston.transports.Console()]
+});
+
 export const jobDataStorage = new Map();
 export const freePassUsage = new Map(); // For in-memory tracking
 export const userCreditsStorage = new Map();
@@ -111,11 +124,23 @@ export function deductUserCredit(userId) {
 // NOW we can define the init function since DATA_STORAGE_TYPE is available
 function initCreditsStorage() {
   try {
-    if (DATA_STORAGE_TYPE !== 'memory') {
-      // Create data directory if it doesn't exist
+    // In Cloud Run, we can't create directories, so skip file operations
+    if (DATA_STORAGE_TYPE === 'cloud-storage' || DATA_STORAGE_TYPE === 'memory') {
+      logger.info('Using cloud/memory storage - skipping file system initialization');
+      return;
+    }
+    
+    // Only try to create directories in development/file mode
+    if (DATA_STORAGE_TYPE === 'file') {
       const dataDirectory = path.join(__dirname, 'data');
-      if (!fs.existsSync(dataDirectory)) {
-        fs.mkdirSync(dataDirectory, { recursive: true });
+      try {
+        if (!fs.existsSync(dataDirectory)) {
+          fs.mkdirSync(dataDirectory, { recursive: true });
+        }
+      } catch (mkdirError) {
+        // If we can't create the directory, switch to memory mode
+        logger.warn('Cannot create data directory, using memory storage instead');
+        return;
       }
       
       // Load existing credits if available
@@ -124,13 +149,12 @@ function initCreditsStorage() {
         Object.entries(data).forEach(([userId, credits]) => {
           userCreditsStorage.set(userId, credits);
         });
-        console.log(`Loaded credits for ${userCreditsStorage.size} users`);
+        logger.info(`Loaded credits for ${userCreditsStorage.size} users`);
       }
-    } else {
-      console.log('Using in-memory storage for user credits');
     }
   } catch (error) {
-    console.error('Error initializing credits storage:', error);
+    logger.error('Error initializing credits storage:', error);
+    // Don't throw - just use memory storage
   }
 }
 
@@ -154,8 +178,14 @@ export function saveCreditsStorage() {
 // Initialize free pass storage
 function initFreePassStorage() {
   try {
-    // Only initialize file storage if not using memory or cloud storage
-    if (DATA_STORAGE_TYPE !== 'memory' && DATA_STORAGE_TYPE !== 'cloud-storage') {
+    // Skip file operations for both memory and cloud-storage modes
+    if (DATA_STORAGE_TYPE === 'memory' || DATA_STORAGE_TYPE === 'cloud-storage') {
+      console.log(`Using ${DATA_STORAGE_TYPE} storage for free pass data`);
+      return;
+    }
+    
+    // Only try file operations if explicitly in file mode
+    if (DATA_STORAGE_TYPE === 'file') {
       // Create data directory if it doesn't exist
       const dataDirectory = path.join(__dirname, 'data');
       try {
@@ -176,8 +206,6 @@ function initFreePassStorage() {
         });
         console.log(`Loaded ${freePassUsage.size} free pass records`);
       }
-    } else {
-      console.log('Using in-memory storage for free pass users');
     }
   } catch (error) {
     console.error('Error initializing free pass storage:', error);

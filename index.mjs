@@ -364,13 +364,23 @@ app.get('/health', (_req, res) => {
   const healthCheck = {
     uptime: process.uptime(),
     message: 'OK',
-    timestamp: Date.now()
+    timestamp: Date.now(),
+    environment: {
+      NODE_ENV: process.env.NODE_ENV || 'not_set',
+      DATA_STORAGE_TYPE: process.env.DATA_STORAGE_TYPE || 'not_set',
+      hasOpenAI: !!process.env.OPENAI_API_KEY,
+      hasLemonSqueezy: !!process.env.LEMON_API_KEY
+    }
   };
 
   try {
     // Add checks for critical services
     if (!process.env.OPENAI_API_KEY) {
       throw new Error('OpenAI API key not configured');
+    }
+    
+    if (!process.env.DATA_STORAGE_TYPE) {
+      logger.warn('DATA_STORAGE_TYPE not set, using defaults');
     }
 
     res.status(200).json(healthCheck);

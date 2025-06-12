@@ -909,6 +909,7 @@ app.get('/api/check-credits', (req, res) => {
 });
 
 // Admin endpoint to view free pass stats
+// Admin endpoint to view free pass stats
 app.get('/api/admin/free-pass-stats', express.json(), async (req, res) => {
   try {
     // Simple check for admin access - you might want to improve this
@@ -934,8 +935,10 @@ app.get('/api/admin/free-pass-stats', express.json(), async (req, res) => {
     // Create stats object
     const stats = {
       totalUsers: simplifiedUsers.length,
-      storageType: process.env.DATA_STORAGE_TYPE || 'file',
-      recentUsers: simplifiedUsers.slice(0, 10) // Show only the 10 most recent
+      storageType: process.env.DATA_STORAGE_TYPE || 'cloud-storage', // Change default to 'cloud-storage'
+      recentUsers: simplifiedUsers.slice(0, 10), // Show only the 10 most recent
+      environment: process.env.NODE_ENV || 'development',
+      storageMode: process.env.DATA_STORAGE_TYPE ? 'configured' : 'default'
     };
     
     return res.json(stats);
@@ -943,6 +946,6 @@ app.get('/api/admin/free-pass-stats', express.json(), async (req, res) => {
     logger.error('Error getting free pass stats:', error);
     return res.status(500).json({ error: 'Internal server error' });
   }
-})
+});
 
 }

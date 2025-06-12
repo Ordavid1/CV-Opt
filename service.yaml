@@ -53,6 +53,8 @@ spec:
               key: latest
         - name: NODE_ENV
           value: "production"
+        - name: DATA_STORAGE_TYPE
+          value: "cloud-storage"
         resources:
           limits:
             cpu: "1"
