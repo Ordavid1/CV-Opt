@@ -20,6 +20,7 @@ import rateLimit from 'express-rate-limit';
 import { jobDataStorage, setJobData, getJobData, initBucket } from './storage.mjs';
 import initLemonSqueezyRoutes from './lemonserver.mjs';
 import { createCVRefinementPrompt, createInitialGreeting } from './public/promptTemplates.mjs';
+import { enqueueRefinementJob } from './taskqueue.mjs';
 
 dotenv.config();
 const __filename = fileURLToPath(import.meta.url);
@@ -580,19 +581,48 @@ app.post('/refine', async (req, res) => {
 
     // CRITICAL: Check if this is a webhook call (has orderId) - if so, reply immediately
     // and do the processing after responding
-    if (orderId) {
-      logger.info("✅ Webhook-triggered refinement starting");
-      res.status(200).json({ 
-        status: "success", 
-        message: "Refinement process started" 
-      });
-      
-      // Continue processing in the background
-      processRefinementAsync(req.body, logger)
-        .catch(err => logger.error(`Background processing error: ${err.message}`));
-      
-      return; // Stop further execution of this handler
-    }
+
+      if (orderId) {
+        logger.info("✅ Webhook-triggered refinement - enqueueing to Cloud Tasks");
+        
+        try {
+          // Enqueue the job to Cloud Tasks
+          await enqueueRefinementJob({
+            orderId,
+            jobId,
+            tabSessionId,
+            jobUrl,
+            cvHTML,
+            refinementLevel: level,
+            conversation: conversation || [],
+            extractedKeywords: '' // Will be extracted by the worker
+          });
+          
+          // Update job status to indicate it's queued
+          if (jobId) {
+            const existingData = await getJobData(jobId) || {};
+            await setJobData(jobId, {
+              ...existingData,
+              status: 'queued',
+              queuedAt: new Date().toISOString()
+            });
+          }
+          
+          // Immediately acknowledge the webhook
+          res.status(200).json({ 
+            status: "success", 
+            message: "Refinement job queued for processing" 
+          });
+          
+          return; // Exit early
+        } catch (error) {
+          logger.error("Failed to enqueue refinement job:", error);
+          return res.status(500).json({ 
+            error: "Failed to queue refinement job",
+            details: error.message 
+          });
+        }
+      }
 
     // For normal user-initiated calls, continue with synchronous processing
     // -------------------------------------------------------------------
@@ -734,7 +764,6 @@ app.post('/refine', async (req, res) => {
   }
 });
 
-/// In index.mjs, replace the processRefinementAsync function starting around line 1067
 async function processRefinementAsync(data, logger) {
   const startTime = Date.now();
   let stage = 'initialization';
@@ -914,6 +943,7 @@ async function processRefinementAsync(data, logger) {
           refinedHTML: cleanedReply,
           changes: changesHtml,
           extractedKeywords,
+          status: 'completed',  // ADD THIS LINE - CRUCIAL!
           completedAt: new Date().toISOString(),
           processingTime: Date.now() - startTime,
           tabSessionId
@@ -967,6 +997,81 @@ async function processRefinementAsync(data, logger) {
     throw err;
   }
 }
+
+// Cloud Tasks worker endpoint
+app.post('/api/process-refinement-task', express.json(), async (req, res) => {
+  const startTime = Date.now();
+  logger.info("📋 Cloud Task worker started");
+  
+  try {
+    // Verify this is from Cloud Tasks
+    const taskName = req.get('X-CloudTasks-TaskName');
+    if (!taskName && process.env.NODE_ENV === 'production') {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+    
+    const { jobId, orderId, jobUrl, cvHTML, refinementLevel, conversation, tabSessionId } = req.body;
+    
+    logger.info(`Processing refinement task for job ${jobId}`);
+    
+    // Update status to processing
+    if (jobId) {
+      const existingData = await getJobData(jobId) || {};
+      await setJobData(jobId, {
+        ...existingData,
+        status: 'processing',
+        processingStartedAt: new Date().toISOString()
+      });
+    }
+    
+    // Run the actual refinement (this is your existing logic)
+    const result = await processRefinementAsync({
+      orderId,
+      jobId,
+      tabSessionId,
+      conversation,
+      jobUrl,
+      cvHTML,
+      refinementLevel
+    }, logger);
+    
+    logger.info(`✅ Task completed for job ${jobId} in ${Date.now() - startTime}ms`);
+    
+    // Cloud Tasks expects 2xx response for success
+    res.status(200).json({ 
+      status: "success",
+      jobId,
+      processingTime: Date.now() - startTime
+    });
+    
+  } catch (error) {
+    logger.error("❌ Task worker error:", error);
+    
+    // Store error state
+    if (req.body.jobId) {
+      try {
+        const existingData = await getJobData(req.body.jobId) || {};
+        await setJobData(req.body.jobId, {
+          ...existingData,
+          status: 'failed',
+          error: {
+            message: error.message,
+            stack: error.stack,
+            timestamp: new Date().toISOString()
+          }
+        });
+      } catch (storeErr) {
+        logger.error("Failed to store error state:", storeErr);
+      }
+    }
+    
+    // Return 500 so Cloud Tasks will retry
+    res.status(500).json({ 
+      error: "Task processing failed",
+      details: error.message 
+    });
+  }
+});
 
 // Create HTTP server instance
 const server = http.createServer(app);

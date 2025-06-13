@@ -527,70 +527,70 @@ app.post('/webhooks/lemonsqueezy', express.raw({ type: 'application/json' }), as
         }
 
         // If not a bundle purchase, continue with the jobId extraction logic
-// Around line 450 in the webhook handler, replace this section:
-if (!jobId) {
-  logger.warn("No jobId found in webhook payload, looking for most recent job");
-  
-  // First try in-memory storage
-  const allJobIds = [...jobDataStorage.keys()];
-  
-  if (allJobIds.length === 0 && bucket) {
-    // If no jobs in memory, try Cloud Storage
-    logger.info("No jobs in memory, searching Cloud Storage...");
-    
-    try {
-      // List all job files
-      const [files] = await bucket.getFiles({
-        prefix: 'jobs/',
-        maxResults: 100,
-        orderBy: 'created desc'
-      });
-      
-      if (files.length > 0) {
-        // Get the most recent file
-        const mostRecentFile = files[0];
-        const jobId = mostRecentFile.name.replace('jobs/', '').replace('.json', '');
-        
-        logger.info(`Found most recent job in Cloud Storage: ${jobId}`);
-        
-        // Load the job data
-        const [content] = await mostRecentFile.download();
-        const jobData = JSON.parse(content.toString());
-        
-        // Cache it in memory
-        jobDataStorage.set(jobId, jobData);
-        
-        // Use this jobId
-        refinementLevel = jobData.refinementLevel || 5;
-        userId = jobData.userId || userId;
-        
-        logger.info(`Using job from Cloud Storage: ${jobId} with refinement level: ${refinementLevel}`);
-      } else {
-        logger.error("No jobs found in Cloud Storage either");
-      }
-    } catch (error) {
-      logger.error("Error searching Cloud Storage for jobs:", error);
-    }
-  } else if (allJobIds.length > 0) {
-    // Use in-memory jobs
-    allJobIds.sort((a, b) => {
-      const timeA = jobDataStorage.get(a)?.createdAt || '';
-      const timeB = jobDataStorage.get(b)?.createdAt || '';
-      return timeB.localeCompare(timeA);
-    });
-    
-    jobId = allJobIds[0];
-    const jobData = await getJobData(jobId);
-    refinementLevel = jobData?.refinementLevel || 5;
-    
-    if (jobData?.userId) {
-      userId = jobData.userId;
-      logger.info(`Extracted userId from most recent job data: ${userId.substring(0, 8)}...`);
-    }
-    
-    logger.info(`Using most recent jobId: ${jobId} with refinement level: ${refinementLevel}`);
-  }
-}
+        // Around line 450 in the webhook handler, replace this section:
+        if (!jobId) {
+          logger.warn("No jobId found in webhook payload, looking for most recent job");
+          
+          // First try in-memory storage
+          const allJobIds = [...jobDataStorage.keys()];
+          
+          if (allJobIds.length === 0 && bucket) {
+            // If no jobs in memory, try Cloud Storage
+            logger.info("No jobs in memory, searching Cloud Storage...");
+            
+            try {
+              // List all job files
+              const [files] = await bucket.getFiles({
+                prefix: 'jobs/',
+                maxResults: 100,
+                orderBy: 'created desc'
+              });
+              
+              if (files.length > 0) {
+                // Get the most recent file
+                const mostRecentFile = files[0];
+                const jobId = mostRecentFile.name.replace('jobs/', '').replace('.json', '');
+                
+                logger.info(`Found most recent job in Cloud Storage: ${jobId}`);
+                
+                // Load the job data
+                const [content] = await mostRecentFile.download();
+                const jobData = JSON.parse(content.toString());
+                
+                // Cache it in memory
+                jobDataStorage.set(jobId, jobData);
+                
+                // Use this jobId
+                refinementLevel = jobData.refinementLevel || 5;
+                userId = jobData.userId || userId;
+                
+                logger.info(`Using job from Cloud Storage: ${jobId} with refinement level: ${refinementLevel}`);
+              } else {
+                logger.error("No jobs found in Cloud Storage either");
+              }
+            } catch (error) {
+              logger.error("Error searching Cloud Storage for jobs:", error);
+            }
+          } else if (allJobIds.length > 0) {
+            // Use in-memory jobs
+            allJobIds.sort((a, b) => {
+              const timeA = jobDataStorage.get(a)?.createdAt || '';
+              const timeB = jobDataStorage.get(b)?.createdAt || '';
+              return timeB.localeCompare(timeA);
+            });
+            
+            jobId = allJobIds[0];
+            const jobData = await getJobData(jobId);
+            refinementLevel = jobData?.refinementLevel || 5;
+            
+            if (jobData?.userId) {
+              userId = jobData.userId;
+              logger.info(`Extracted userId from most recent job data: ${userId.substring(0, 8)}...`);
+            }
+            
+            logger.info(`Using most recent jobId: ${jobId} with refinement level: ${refinementLevel}`);
+          }
+        }
 
         logger.info(`DEBUG: Before bundle check - bundleType: ${bundleType}, userId: ${userId ? userId.substring(0, 8) : 'null'}, jobId: ${jobId}`);
         // CHECK IF THIS IS A BUNDLE PURCHASE - THIS MUST BE HERE, NOT IN THE ELSE BLOCK
@@ -647,21 +647,31 @@ if (!jobId) {
         
         // Trigger refinement process in-process (avoid HTTP loop)
         try {
-          logger.info(`🔄 Starting in-process refinement for jobId: ${jobId} at level: ${finalRefinementLevel}`);
-          // Import processRefinementAsync from index.mjs
-          const { processRefinementAsync } = await import('./index.mjs');
-          processRefinementAsync({
+          logger.info(`🔄 Enqueueing refinement for jobId: ${jobId} at level: ${finalRefinementLevel}`);
+          
+          // Import the enqueue function at the top of lemonserver.mjs
+          const { enqueueRefinementJob } = await import('./taskqueue.mjs');
+          
+          await enqueueRefinementJob({
             orderId,
             jobId,
             tabSessionId,
-            conversation: [],
             jobUrl: jobData.jobUrl,
             cvHTML: jobData.cvHTML,
-            refinementLevel: finalRefinementLevel
-          }, logger).catch(err => {
-            logger.error(`❌ Background refinement error for jobId ${jobId}: ${err.message}`, err);
+            refinementLevel: finalRefinementLevel,
+            conversation: []
           });
-          logger.info(`✅ In-process refinement initiated for jobId: ${jobId}`);
+          
+          // Update job status
+          await setJobData(jobId, {
+            ...jobData,
+            status: 'queued',
+            orderId,
+            queuedAt: new Date().toISOString()
+          });
+          
+          logger.info(`✅ Refinement job queued for jobId: ${jobId}`);
+          
           return res.status(200).json({
             received: true,
             status: 'paid',
@@ -670,8 +680,8 @@ if (!jobId) {
             refinementLevel: finalRefinementLevel
           });
         } catch (err) {
-          logger.error(`❌ Error initiating in-process refinement for jobId ${jobId}: ${err.message}`);
-          return res.status(500).json({ error: "Error starting refinement process" });
+          logger.error(`❌ Error queueing refinement for jobId ${jobId}: ${err.message}`);
+          return res.status(500).json({ error: "Error queueing refinement process" });
         }
       }
     }
@@ -733,6 +743,26 @@ app.post('/api/refinement-status', express.json(), async (req, res) => {
         status: 'bundle_purchase',
         bundleCredits: jobData.bundleCredits || 10,
         message: 'Bundle purchase completed - credits added'
+      });
+    }
+
+    // Check if job is queued
+    if (jobData.status === 'queued') {
+      logger.info(`Job ${jobId} is queued for processing`);
+      return res.json({
+        status: 'queued',
+        message: 'Your CV refinement is queued and will start processing shortly',
+        queuedAt: jobData.queuedAt
+      });
+    }
+
+    // Check if job is processing
+    if (jobData.status === 'processing') {
+      logger.info(`Job ${jobId} is currently being processed`);
+      return res.json({
+        status: 'processing',
+        message: 'Your CV is being refined right now',
+        processingStartedAt: jobData.processingStartedAt
       });
     }
 
