@@ -555,7 +555,16 @@ function removeMarkdownWrapper(text) {
 
 app.post('/refine', async (req, res) => {
   logger.info("🔥 '/refine' endpoint called.");
-  logger.debug(`📝 Request body: ${JSON.stringify(req.body, null, 2)}`);
+  
+  // Create a copy of req.body with truncated cvHTML for logging
+  const logBody = { ...req.body };
+  if (logBody.cvHTML && logBody.cvHTML.length > 100) {
+    const first50 = logBody.cvHTML.slice(0, 50);
+    const last50 = logBody.cvHTML.slice(-50);
+    logBody.cvHTML = `${first50}...[${logBody.cvHTML.length} chars total]...${last50}`;
+  }
+  
+  logger.debug(`📝 Request body: ${JSON.stringify(logBody, null, 2)}`);
 
   // Validate the payload
   if (!req.body) {

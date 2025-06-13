@@ -241,6 +241,14 @@ app.post('/api/create-checkout', express.json(), async (req, res) => {
       throw new Error('Missing job data for refinement');
     }
     
+    // Update ONLY the credit fields, preserve existing status
+    await setJobData(jobId, { 
+      ...jobData, 
+      creditUsed: true, 
+      creditUsedAt: new Date().toISOString(), 
+      // DON'T set status here - let the refinement process handle it
+    });
+
     // Trigger refinement process
     const refineUrl = `${process.env.APP_URL || 'http://localhost:8080'}/refine`;
     logger.info(`Starting credit-based refinement for jobId: ${jobId}`);
@@ -825,11 +833,89 @@ app.post('/api/refinement-status', express.json(), async (req, res) => {
 
     // Check if job is processing
     if (jobData.status === 'processing') {
-      logger.info(`Job ${jobId} is currently being processed`);
+      // Check if it's been stuck too long
+      const startTime = new Date(jobData.processingStartedAt || jobData.createdAt);
+      const now = new Date();
+      const minutesElapsed = (now - startTime) / (1000 * 60);
+      
+      // If processing for more than 10 minutes, it's likely stuck
+      if (minutesElapsed > 10) {
+        logger.warn(`Job ${jobId} has been processing for ${minutesElapsed.toFixed(1)} minutes - likely stuck`);
+        
+        // Update the job status to failed
+        await setJobData(jobId, {
+          ...jobData,
+          status: 'failed',
+          error: {
+            message: 'Refinement process timed out after 10 minutes',
+            stage: 'processing_timeout',
+            minutesElapsed: minutesElapsed.toFixed(1),
+            originalStatus: 'processing'
+          },
+          failedAt: new Date().toISOString()
+        });
+        
+        // Check if we should retry (only retry once)
+        if (!jobData.retryAttempted) {
+          logger.info(`Attempting to retry job ${jobId}`);
+          
+          try {
+            // Update job data to mark retry attempted
+            await setJobData(jobId, {
+              ...jobData,
+              status: 'failed',
+              retryAttempted: true,
+              error: {
+                message: 'Processing timeout - attempting retry',
+                minutesElapsed: minutesElapsed.toFixed(1)
+              }
+            });
+            
+            // Re-enqueue the job
+            const { enqueueRefinementJob } = await import('./taskqueue.mjs');
+            await enqueueRefinementJob({
+              orderId: jobData.orderId || `retry-${jobId}`,
+              jobId,
+              tabSessionId: jobData.tabSessionId,
+              jobUrl: jobData.jobUrl,
+              cvHTML: jobData.cvHTML,
+              refinementLevel: jobData.refinementLevel || 5,
+              conversation: [],
+              isRetry: true
+            });
+            
+            return res.json({
+              status: 'retrying',
+              message: 'Job timed out and is being retried automatically',
+              minutesElapsed: minutesElapsed.toFixed(1)
+            });
+            
+          } catch (retryError) {
+            logger.error(`Failed to retry job ${jobId}:`, retryError);
+            
+            return res.json({
+              status: 'failed',
+              error: 'Refinement process timed out and retry failed. Please try again.',
+              minutesElapsed: minutesElapsed.toFixed(1)
+            });
+          }
+        } else {
+          // Already retried once, don't retry again
+          return res.json({
+            status: 'failed',
+            error: 'Refinement process timed out after retry. Please try again with a shorter CV or job description.',
+            minutesElapsed: minutesElapsed.toFixed(1)
+          });
+        }
+      }
+      
+      // Normal processing response if not timed out
+      logger.info(`Job ${jobId} is currently being processed (${minutesElapsed.toFixed(1)} minutes elapsed)`);
       return res.json({
         status: 'processing',
         message: 'Your CV is being refined right now',
-        processingStartedAt: jobData.processingStartedAt
+        processingStartedAt: jobData.processingStartedAt,
+        minutesElapsed: minutesElapsed.toFixed(1)
       });
     }
 
