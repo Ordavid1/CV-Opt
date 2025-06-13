@@ -311,6 +311,8 @@ app.post('/api/create-checkout', express.json(), async (req, res) => {
     
     // If no free pass or already used, continue with normal checkout process
     logger.info(`No free pass available for user, creating paid checkout`);
+    const testMode = process.env.NODE_ENV !== 'production';
+    logger.info(`Creating checkout - Environment: ${process.env.NODE_ENV}, Test Mode: ${testMode}`);
 
     // Add tabSessionId to checkout data for webhook processing
     const payload = {
@@ -318,6 +320,7 @@ app.post('/api/create-checkout', express.json(), async (req, res) => {
         type: "checkouts",
         attributes: {
           custom_price: bundleType === 'bundle' ? 500 : 100, // $5 or $1 in cents
+          test_mode: process.env.NODE_ENV !== 'production',  // true for local, false for production
           checkout_data: {
             custom: {
               jobId: jobId,
