@@ -427,16 +427,36 @@ async function verifyPaymentWithBackend(jobId, tabSessionId) {
   }
 }
 
-  // Handle checkout with enhanced Safari handling
 async function handleCheckout(event) {
   event.preventDefault();
+  
+  // Prevent double-clicks
+  if (checkoutInProgress) {
+    console.log('Checkout already in progress, ignoring click');
+    return;
+  }
   
   // Debug output at the beginning of handleCheckout
   console.log("Starting checkout process");
   
-  resetCheckoutState();
+  // Set flag BEFORE reset to preserve it
+  checkoutInProgress = true;
+  
+  // Reset other state but preserve checkoutInProgress
+  paymentCompleted = false;
+  window.paymentCompleted = false;
+  window.checkoutCompleted = false;
+  
+  const checkoutButton = document.getElementById('checkout-button');
+  if (checkoutButton) {
+    checkoutButton.disabled = true;
+    checkoutButton.textContent = 'Processing...';
+  }
+  
+  hideSpinner();
   
   messageElement.textContent = 'Preparing checkout...';
+  
   try {
     // Get job URL and CV data
     const jobUrl = document.getElementById('jobUrlInput').value.trim();
@@ -445,6 +465,7 @@ async function handleCheckout(event) {
       messageElement.textContent = 'Error: Could not access the CV input frame.';
       throw new Error('Could not access CV input frame.');
     }
+    
     const cvHTML = inputDoc.body.innerHTML;
     if (!jobUrl || !cvHTML || cvHTML.includes('class="placeholder"')) {
       messageElement.textContent = 'Please provide both a job URL and your CV before checkout.';
@@ -455,11 +476,6 @@ async function handleCheckout(event) {
     const slider = document.getElementById('refineStrength');
     const refinementLevel = slider ? parseInt(slider.value, 10) : 5;
     
-    // Disable checkout button and show processing state
-    checkoutInProgress = true;
-    checkoutButton.disabled = true;
-    checkoutButton.textContent = 'Processing...';
-
     // Generate a unique tab session ID
     const tabSessionId = sessionStorage.getItem('tabSessionId') || 
                           Math.random().toString(36).substring(2);
@@ -477,11 +493,11 @@ async function handleCheckout(event) {
         jobUrl, 
         cvHTML, 
         refinementLevel,
-        tabSessionId  // Include tabSessionId here
+        tabSessionId
       })
     });
   
-    // Update the error handling in handleCheckout
+    // Handle store data errors
     if (!storeDataResponse.ok) {
       // Special handling for rate limit errors
       if (storeDataResponse.status === 429) {
@@ -514,10 +530,10 @@ async function handleCheckout(event) {
       throw new Error("No jobId returned from server");
     }
 
-    // In handleCheckout function, add bundle type to the request
+    // Get selected payment type
     const selectedPaymentType = document.querySelector('input[name="payment-type"]:checked').value;
 
-    // When creating checkout
+    // Create checkout
     const response = await fetch(`/api/create-checkout?t=${timestamp}`, {
       method: 'POST',
       headers: { 
@@ -528,7 +544,7 @@ async function handleCheckout(event) {
         jobId,
         refinementLevel,
         tabSessionId,
-        bundleType: selectedPaymentType // Add this
+        bundleType: selectedPaymentType
       })
     });
     
@@ -536,43 +552,46 @@ async function handleCheckout(event) {
       throw new Error(`Failed to create checkout session: ${response.status}`);
     }
     
-    // Handle credit-based response
     const data = await response.json();
 
-    if (data.useCredit === true) {
-      // Using credits instead of payment
-      messageElement.textContent = `✅ Using 1 credit. ${data.remainingCredits} credits remaining. Processing your CV...`;
-      
-      // Update credits display
-      document.getElementById('credits-count').textContent = data.remainingCredits;
-
-      // Update payment options display based on remaining credits
-      if (typeof updatePaymentOptionsDisplay === 'function') {
-        updatePaymentOptionsDisplay(data.remainingCredits);
+// Handle credit-based response
+if (data.useCredit === true) {
+  // Using credits instead of payment
+  messageElement.textContent = data.refinementStarted 
+    ? `✅ Using 1 credit. ${data.remainingCredits} credits remaining. Processing your CV...`
+    : `❌ Failed to start refinement. Your credit was refunded.`;
+  
+  // Update credits display
+  if (data.remainingCredits !== undefined) {
+    document.getElementById('credits-count').textContent = data.remainingCredits;
+  }
+  
+  // If refinement started successfully, begin polling
+  if (data.refinementStarted && data.jobId) {
+    // Mark as successful "payment"
+    window.paymentCompleted = true;
+    window.paymentSuccessHandled = true;
+    
+    // Start polling for results with the correct jobId
+    setTimeout(() => {
+      if (typeof pollRefinementStatus === 'function') {
+        window.checkoutCompleted = false;
+        pollRefinementStatus(data.jobId, tabSessionId); // Pass tabSessionId too
       }
-
-      // If credits are now 0, update the checkout button text
-      if (data.remainingCredits === 0) {
-        const checkoutButton = document.getElementById('checkout-button');
-        if (checkoutButton) {
-          checkoutButton.innerHTML = '<span class="button-icon">✨</span>Optimize My CV';
-        }
-      }
-      
-      // Mark payment as complete since we used a credit
-      window.paymentCompleted = true;
-      window.paymentSuccessHandled = true;
-      
-      // Start polling for refinement results
-      setTimeout(() => {
-        if (typeof pollRefinementStatus === 'function') {
-          window.checkoutCompleted = false;
-          pollRefinementStatus(jobId, tabSessionId);
-        }
-      }, 1000);
-      
-      return; // Exit early, no payment needed
-    }
+    }, 1000);
+  }
+  
+  // Re-enable button
+  checkoutInProgress = false;
+  checkoutButton.disabled = false;
+  if (data.remainingCredits > 0) {
+    checkoutButton.innerHTML = `<span class="button-icon">✨</span>Optimize My CV (${data.remainingCredits} credits available)`;
+  } else {
+    checkoutButton.innerHTML = '<span class="button-icon">✨</span>Optimize My CV';
+  }
+  
+  return; // EXIT HERE
+}
           
     // Handle free pass case
     if (data.freePass === true) {
@@ -598,7 +617,7 @@ async function handleCheckout(event) {
       // Store reference to the window
       window.freePassWindow = freePassWindow;
       
-      // Handle popup
+      // Handle popup blocker
       if (!freePassWindow) {
         messageElement.textContent = '⚠️ The form was blocked. Please disable popup blockers and try again.';
         checkoutInProgress = false;
@@ -619,14 +638,14 @@ async function handleCheckout(event) {
         }
       }
       
-      return; // Skip the regular checkout flow
+      return; // EXIT HERE for free pass flow
     }
     
-    // Regular checkout flow
+    // Regular checkout flow (paid)
     if (!data.checkoutUrl) {
       throw new Error('No checkout URL in response');
     }
-    
+        
     messageElement.textContent = 'Opening checkout...';
 
     // Validate URL
@@ -638,15 +657,6 @@ async function handleCheckout(event) {
         validCheckoutUrl = 'https://' + validCheckoutUrl;
       }
     }
-    
-    /*
-    // Add tab session ID as a URL parameter to the checkout URL
-    if (validCheckoutUrl.includes('?')) {
-      validCheckoutUrl += `&tab_session=${encodeURIComponent(tabSessionId)}`;
-    } else {
-      validCheckoutUrl += `?tab_session=${encodeURIComponent(tabSessionId)}`;
-    }
-    */
     
     console.log("Using popup window checkout for all browsers");
 
@@ -737,6 +747,7 @@ async function handleCheckout(event) {
     if (typeof showCheckResultsButton === 'function') {
       showCheckResultsButton();
     }
+    
   } catch (error) {
     messageElement.textContent = `Error: ${error.message}. Please try again.`;
     checkoutInProgress = false;

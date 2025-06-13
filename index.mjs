@@ -416,22 +416,54 @@ try {
 // API Routes Group
 // -------------------------------------------------------------------
 
-// Health check endpoint
-app.get('/health', (_req, res) => {
-  // Check critical dependencies
-  const healthCheck = {
-    uptime: process.uptime(),
-    message: 'OK',
-    timestamp: Date.now(),
-    environment: {
-      NODE_ENV: process.env.NODE_ENV || 'not_set',
-      DATA_STORAGE_TYPE: process.env.DATA_STORAGE_TYPE || 'not_set',
-      hasOpenAI: !!process.env.OPENAI_API_KEY,
-      hasLemonSqueezy: !!process.env.LEMON_API_KEY
-    }
-  };
-
+// Add this function before the health endpoint
+async function checkStorageHealth() {
   try {
+    // Check if we're using cloud storage
+    if (process.env.DATA_STORAGE_TYPE === 'cloud-storage' || process.env.STORAGE_BUCKET) {
+      // Try to get bucket status from storage module
+      try {
+        const storageModule = await import('./storage.mjs');
+        // Check if bucket was initialized
+        return { 
+          status: 'healthy', 
+          type: 'cloud-storage',
+          bucketName: process.env.STORAGE_BUCKET || 'cv-opt-user-data'
+        };
+      } catch (error) {
+        return { 
+          status: 'unknown', 
+          type: 'cloud-storage',
+          message: 'Could not verify bucket status'
+        };
+      }
+    }
+    return { status: 'healthy', type: 'memory' };
+  } catch (error) {
+    return { status: 'unhealthy', error: error.message };
+  }
+}
+
+app.get('/health', async (_req, res) => {
+  try {
+    // Get storage health first
+    const storageHealth = await checkStorageHealth();
+    
+    // Only ONE healthCheck declaration
+    const healthCheck = {
+      uptime: process.uptime(),
+      message: 'OK',
+      timestamp: Date.now(),
+      storage: storageHealth,
+      environment: {
+        NODE_ENV: process.env.NODE_ENV || 'not_set',
+        DATA_STORAGE_TYPE: process.env.DATA_STORAGE_TYPE || 'not_set',
+        hasOpenAI: !!process.env.OPENAI_API_KEY,
+        hasLemonSqueezy: !!process.env.LEMON_API_KEY
+        // Remove hasBucket: !!bucket line
+      }
+    };
+
     // Add checks for critical services
     if (!process.env.OPENAI_API_KEY) {
       throw new Error('OpenAI API key not configured');
@@ -443,11 +475,18 @@ app.get('/health', (_req, res) => {
 
     res.status(200).json(healthCheck);
   } catch (error) {
-    healthCheck.message = error.message;
-    res.status(503).json(healthCheck);
+    // Create error response
+    const errorHealthCheck = {
+      uptime: process.uptime(),
+      message: error.message,
+      timestamp: Date.now(),
+      status: 'unhealthy'
+    };
+    res.status(503).json(errorHealthCheck);
   }
 });
 
+// DELETE ALL THE DUPLICATE CODE HERE
 
 app.get('/', (_req, res, next) => {
   const nonce = crypto.randomBytes(16).toString('base64');
@@ -464,8 +503,6 @@ app.get('/', (_req, res, next) => {
     next(error);
   }
 });
-
-
 // -------------------------------------------------------------------
 // /partial Endpoint (Minimal greeting / multi-turn step 1)
 // -------------------------------------------------------------------
@@ -527,11 +564,36 @@ app.post('/refine', async (req, res) => {
   }
 
   try {
+    // Extract all variables first
     const { conversation, jobUrl, cvHTML, refinementLevel, orderId, jobId, tabSessionId } = req.body;
     
     // Enhanced logging for debugging
     logger.info(`Refinement level received as: ${typeof refinementLevel}: ${refinementLevel}`);
     logger.info(`Tab session ID: ${tabSessionId || 'not provided'}`);
+
+    // Check for duplicate processing AFTER extracting jobId
+    if (jobId) {
+      const existingJob = await getJobData(jobId);
+      if (existingJob && existingJob.status === 'processing') {
+        logger.info(`Job ${jobId} already processing, skipping duplicate request`);
+        return res.status(200).json({ 
+          status: "already_processing",
+          message: "This job is already being processed"
+        });
+      }
+      
+      if (existingJob && existingJob.status === 'completed' && existingJob.refinedHTML) {
+        logger.info(`Job ${jobId} already completed, returning cached result`);
+        return res.json({
+          status: "success",
+          message: "Refinement already complete",
+          refinedHTML: existingJob.refinedHTML,
+          changes: existingJob.changes,
+          extractedKeywords: existingJob.extractedKeywords,
+          cached: true
+        });
+      }
+    }
 
     // Skip conversation check for webhook calls which may not have a conversation
     if (!orderId && (!conversation || !Array.isArray(conversation))) {
@@ -545,7 +607,6 @@ app.post('/refine', async (req, res) => {
     }
 
     // Convert refinementLevel to a number (default to 5 if not provided)
-    // More robust parsing with fallbacks
     let level = 5; // Default
     
     if (refinementLevel !== undefined && refinementLevel !== null) {
@@ -575,54 +636,53 @@ app.post('/refine', async (req, res) => {
         cvHTML,
         refinementLevel: level,
         tabSessionId,
+        status: 'pending' // Set initial status
       });
       logger.info(`✅ Updated job data for jobId: ${jobId} with refinement level: ${level} and tabSessionId: ${tabSessionId}`);
     }
 
-    // CRITICAL: Check if this is a webhook call (has orderId) - if so, reply immediately
-    // and do the processing after responding
-
-      if (orderId) {
-        logger.info("✅ Webhook-triggered refinement - enqueueing to Cloud Tasks");
+    // CRITICAL: Check if this is a webhook call (has orderId)
+    if (orderId) {
+      logger.info("✅ Webhook-triggered refinement - enqueueing to Cloud Tasks");
+      
+      try {
+        // Enqueue the job to Cloud Tasks
+        await enqueueRefinementJob({
+          orderId,
+          jobId,
+          tabSessionId,
+          jobUrl,
+          cvHTML,
+          refinementLevel: level,
+          conversation: conversation || [],
+          extractedKeywords: '' // Will be extracted by the worker
+        });
         
-        try {
-          // Enqueue the job to Cloud Tasks
-          await enqueueRefinementJob({
-            orderId,
-            jobId,
-            tabSessionId,
-            jobUrl,
-            cvHTML,
-            refinementLevel: level,
-            conversation: conversation || [],
-            extractedKeywords: '' // Will be extracted by the worker
-          });
-          
-          // Update job status to indicate it's queued
-          if (jobId) {
-            const existingData = await getJobData(jobId) || {};
-            await setJobData(jobId, {
-              ...existingData,
-              status: 'queued',
-              queuedAt: new Date().toISOString()
-            });
-          }
-          
-          // Immediately acknowledge the webhook
-          res.status(200).json({ 
-            status: "success", 
-            message: "Refinement job queued for processing" 
-          });
-          
-          return; // Exit early
-        } catch (error) {
-          logger.error("Failed to enqueue refinement job:", error);
-          return res.status(500).json({ 
-            error: "Failed to queue refinement job",
-            details: error.message 
+        // Update job status to indicate it's queued
+        if (jobId) {
+          const existingData = await getJobData(jobId) || {};
+          await setJobData(jobId, {
+            ...existingData,
+            status: 'queued',
+            queuedAt: new Date().toISOString()
           });
         }
+        
+        // Immediately acknowledge the webhook
+        res.status(200).json({ 
+          status: "success", 
+          message: "Refinement job queued for processing" 
+        });
+        
+        return; // Exit early
+      } catch (error) {
+        logger.error("Failed to enqueue refinement job:", error);
+        return res.status(500).json({ 
+          error: "Failed to queue refinement job",
+          details: error.message 
+        });
       }
+    }
 
     // For normal user-initiated calls, continue with synchronous processing
     // -------------------------------------------------------------------
@@ -843,8 +903,11 @@ async function processRefinementAsync(data, logger) {
         } catch (error) {
           retries++;
           logger.error(`Keywords extraction attempt ${retries} failed: ${error.message}`);
-          if (retries >= maxRetries) throw error;
-          await new Promise(resolve => setTimeout(resolve, 2000 * retries)); // Exponential backoff
+          if (retries >= maxRetries) {
+            // Make sure we set the job as failed!
+            throw new Error(`Failed after ${maxRetries} attempts: ${error.message}`);
+          }
+          await new Promise(resolve => setTimeout(resolve, 2000 * retries));
         }
       }
       
@@ -985,9 +1048,9 @@ async function processRefinementAsync(data, logger) {
         const existingData = await getJobData(data.jobId) || {};
         await setJobData(data.jobId, {
           ...existingData,
+          status: 'failed', // IMPORTANT: Set status to failed
           error: errorDetails,
-          failedAt: new Date().toISOString(),
-          status: 'failed'
+          failedAt: new Date().toISOString()
         });
       } catch (storeErr) {
         logger.error('Failed to store error state:', storeErr);
@@ -997,6 +1060,10 @@ async function processRefinementAsync(data, logger) {
     throw err;
   }
 }
+
+// -------------------------------------------------------------------
+// Cloud Tasks integration
+// -------------------------------------------------------------------
 
 // Cloud Tasks worker endpoint
 app.post('/api/process-refinement-task', express.json(), async (req, res) => {

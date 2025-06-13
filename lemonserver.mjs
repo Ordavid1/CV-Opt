@@ -224,71 +224,74 @@ app.post('/api/create-checkout', express.json(), async (req, res) => {
     const userId = generateUserId(req);
     logger.info(`User ID: ${userId.substring(0, 8)}...`);
 
-    // Check if user has credits first
-    const userCredits = getUserCredits(userId);
-    if (userCredits > 0) {
-      logger.info(`User has ${userCredits} credits, using credit instead of payment`);
-      
-      // Deduct one credit
-      deductUserCredit(userId);
-      saveCreditsStorage(); // Save the credit deduction
-      
-      // IMPORTANT: Trigger refinement process for credit usage
-      try {
-        // Get the job data
-        const jobData = await getJobData(jobId);
-        if (!jobData || !jobData.jobUrl || !jobData.cvHTML) {
-          throw new Error('Missing job data for refinement');
-        }
-        
-        // Trigger refinement process immediately
-        const refineUrl = `${process.env.APP_URL || 'http://localhost:8080'}/refine`;
-        logger.info(`Starting credit-based refinement for jobId: ${jobId}`);
-        
-        const refineResponse = await fetch(refineUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            orderId: `credit-${jobId}`, // Mark as credit-based
-            jobId,
-            tabSessionId,
-            conversation: [],
-            jobUrl: jobData.jobUrl,
-            cvHTML: jobData.cvHTML,
-            refinementLevel: jobData.refinementLevel || 5
-          })
-        });
-        
-        if (!refineResponse.ok) {
-          const errorText = await refineResponse.text();
-          logger.error(`Failed to trigger credit-based refinement: ${errorText}`);
-          throw new Error('Failed to start refinement process');
-        }
-        
-        logger.info(`✅ Credit-based refinement started for jobId: ${jobId}`);
-        
-        // Return special response for credit usage
-        return res.json({
-          useCredit: true,
-          remainingCredits: userCredits - 1,
-          jobId: jobId,
-          refinementStarted: true
-        });
-        
-      } catch (error) {
-        logger.error(`Error starting credit-based refinement: ${error.message}`);
-        
-        // Refund the credit if refinement fails to start
-        addUserCredits(userId, 1);
-        saveCreditsStorage();
-        
-        return res.status(500).json({
-          error: 'Failed to start refinement process',
-          details: error.message,
-          creditRefunded: true
-        });
-      }
+// Check if user has credits first
+const userCredits = getUserCredits(userId);
+if (userCredits > 0) {
+  logger.info(`User has ${userCredits} credits, using credit instead of payment`);
+  
+  // Deduct one credit
+  deductUserCredit(userId);
+  saveCreditsStorage(); // Save the credit deduction
+  
+  // Trigger refinement process immediately
+  try {
+    // Get the job data
+    const jobData = await getJobData(jobId);
+    if (!jobData || !jobData.jobUrl || !jobData.cvHTML) {
+      throw new Error('Missing job data for refinement');
     }
+    
+    // Trigger refinement process
+    const refineUrl = `${process.env.APP_URL || 'http://localhost:8080'}/refine`;
+    logger.info(`Starting credit-based refinement for jobId: ${jobId}`);
+    
+    // Don't wait for refinement to complete - just trigger it
+    fetch(refineUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        orderId: `credit-${jobId}`, // Mark as credit-based
+        jobId,
+        tabSessionId,
+        conversation: [],
+        jobUrl: jobData.jobUrl,
+        cvHTML: jobData.cvHTML,
+        refinementLevel: jobData.refinementLevel || 5
+      })
+    }).then(response => {
+      if (!response.ok) {
+        logger.error(`Failed to trigger credit-based refinement: ${response.status}`);
+      } else {
+        logger.info(`Credit-based refinement triggered successfully`);
+      }
+    }).catch(error => {
+      logger.error(`Error triggering credit-based refinement: ${error.message}`);
+    });
+    
+    // Return success response immediately
+    return res.json({
+      useCredit: true,
+      remainingCredits: userCredits - 1,
+      jobId: jobId,
+      refinementStarted: true
+    });
+    
+  } catch (error) {
+    logger.error(`Error starting credit-based refinement: ${error.message}`);
+    
+    // Refund the credit if refinement fails to start
+    addUserCredits(userId, 1);
+    saveCreditsStorage();
+    
+    return res.json({
+      useCredit: true,
+      remainingCredits: userCredits, // Original amount since we refunded
+      jobId: jobId,
+      refinementStarted: false,
+      error: error.message
+    });
+  }
+}
 
     // Check if user has already used their free pass
     const freePassUsed = hasUsedFreePass(userId);
@@ -416,13 +419,14 @@ app.post('/webhooks/lemonsqueezy', express.raw({ type: 'application/json' }), as
     });
 
     // 6️⃣ Skip signature validation for now (for testing)
-    // If this is a real production environment, you should uncomment this
-    /*
+    
     if (!signature || computedSignature !== signature) {
       logger.error('❌ Invalid webhook signature');
+      logger.debug('Expected:', computedSignature);
+      logger.debug('Received:', signature);
       return res.status(401).json({ error: 'Invalid signature' });
     }
-    */
+    
 
     // 7️⃣ Parse the webhook payload
     const payload = JSON.parse(bodyStr);
@@ -439,6 +443,31 @@ app.post('/webhooks/lemonsqueezy', express.raw({ type: 'application/json' }), as
 
     if (eventName === 'order_created') {
       const orderId = payload.data.id;
+
+      // Check if we've already processed this order
+      const processedOrderKey = `processed_order_${orderId}`;
+      const alreadyProcessed = jobDataStorage.has(processedOrderKey);
+
+      if (alreadyProcessed) {
+        logger.info(`Order ${orderId} already processed, skipping duplicate webhook`);
+        return res.status(200).json({ 
+          received: true,
+          status: 'already_processed',
+          orderId
+        });
+      }
+
+      // Mark this order as processed
+      jobDataStorage.set(processedOrderKey, {
+        processedAt: new Date().toISOString(),
+        orderId
+      });
+
+      // Set expiry for this flag (clean up after 1 hour)
+      setTimeout(() => {
+        jobDataStorage.delete(processedOrderKey);
+      }, 3600000);
+
       const status = payload.data.attributes?.status;
       
       if (status === 'paid') {
@@ -652,23 +681,49 @@ app.post('/webhooks/lemonsqueezy', express.raw({ type: 'application/json' }), as
           // Import the enqueue function at the top of lemonserver.mjs
           const { enqueueRefinementJob } = await import('./taskqueue.mjs');
           
-          await enqueueRefinementJob({
-            orderId,
-            jobId,
-            tabSessionId,
-            jobUrl: jobData.jobUrl,
-            cvHTML: jobData.cvHTML,
-            refinementLevel: finalRefinementLevel,
-            conversation: []
-          });
-          
-          // Update job status
-          await setJobData(jobId, {
-            ...jobData,
-            status: 'queued',
-            orderId,
-            queuedAt: new Date().toISOString()
-          });
+          // Check if we're in local/sync mode
+          const isLocalMode = process.env.NODE_ENV !== 'production' && !process.env.ENABLE_CLOUD_TASKS;
+
+          if (isLocalMode) {
+            // In local mode, don't update status after enqueueing since it runs synchronously
+            logger.info(`🔄 Enqueueing refinement for jobId: ${jobId} at level: ${finalRefinementLevel} (local mode)`);
+            
+            await enqueueRefinementJob({
+              orderId,
+              jobId,
+              tabSessionId,
+              jobUrl: jobData.jobUrl,
+              cvHTML: jobData.cvHTML,
+              refinementLevel: finalRefinementLevel,
+              conversation: []
+            });
+            
+            // Don't update status here in local mode - the job is already complete!
+            logger.info(`✅ Refinement completed synchronously for jobId: ${jobId}`);
+          } else {
+            // Production mode - update status to queued
+            logger.info(`🔄 Enqueueing refinement for jobId: ${jobId} at level: ${finalRefinementLevel}`);
+            
+            await enqueueRefinementJob({
+              orderId,
+              jobId,
+              tabSessionId,
+              jobUrl: jobData.jobUrl,
+              cvHTML: jobData.cvHTML,
+              refinementLevel: finalRefinementLevel,
+              conversation: []
+            });
+            
+            // Only update status in production mode
+            await setJobData(jobId, {
+              ...jobData,
+              status: 'queued',
+              orderId,
+              queuedAt: new Date().toISOString()
+            });
+            
+            logger.info(`✅ Refinement job queued for jobId: ${jobId}`);
+          }
           
           logger.info(`✅ Refinement job queued for jobId: ${jobId}`);
           
@@ -726,7 +781,19 @@ app.post('/api/refinement-status', express.json(), async (req, res) => {
       });
     }
     
-    // Check for error state
+    // CHECK FOR COMPLETED STATUS FIRST!!!
+    if (jobData.status === 'completed' || (jobData.refinedHTML && jobData.completedAt)) {
+      logger.info(`Refinement results found for jobId: ${jobId}`);
+      return res.json({
+        status: 'completed',
+        refinedHTML: jobData.refinedHTML,
+        changes: jobData.changes,
+        extractedKeywords: jobData.extractedKeywords,
+        processingTime: jobData.processingTime
+      });
+    }
+    
+    // Then check for error state
     if (jobData.status === 'failed' || jobData.error) {
       logger.error(`Job ${jobId} failed:`, jobData.error);
       return res.json({
@@ -775,7 +842,8 @@ app.post('/api/refinement-status', express.json(), async (req, res) => {
       });
     }
     
-    if (jobData.refinedHTML) {
+    // Check if refinement is complete FIRST
+    if (jobData.status === 'completed' || (jobData.refinedHTML && jobData.completedAt)) {
       logger.info(`Refinement results found for jobId: ${jobId}`);
       return res.json({
         status: 'completed',
@@ -786,28 +854,35 @@ app.post('/api/refinement-status', express.json(), async (req, res) => {
       });
     }
     
-    // Check if it's been too long
-    const createdAt = new Date(jobData.createdAt);
-    const now = new Date();
-    const minutesElapsed = (now - createdAt) / (1000 * 60);
+// Check if it's been too long (timeout detection)
+if (jobData.createdAt || jobData.processingStartedAt) {
+  const startTime = new Date(jobData.processingStartedAt || jobData.createdAt);
+  const now = new Date();
+  const minutesElapsed = (now - startTime) / (1000 * 60);
+  
+  // If it's been more than 5 minutes and still processing, something is wrong
+  if (minutesElapsed > 5 && jobData.status === 'processing') {
+    logger.warn(`Job ${jobId} has been processing for ${minutesElapsed.toFixed(1)} minutes - likely failed`);
     
-    if (minutesElapsed > 5) {
-      logger.warn(`Job ${jobId} has been processing for ${minutesElapsed.toFixed(1)} minutes`);
-      return res.json({
-        status: 'timeout',
-        message: 'Refinement process is taking too long',
+    // Update the job status to failed
+    await setJobData(jobId, {
+      ...jobData,
+      status: 'failed',
+      error: {
+        message: 'Refinement process timed out after 5 minutes',
+        stage: 'processing_timeout',
         minutesElapsed: minutesElapsed.toFixed(1)
-      });
-    }
-    
-    logger.info(`Refinement still in progress for jobId: ${jobId}`);
-    return res.json({
-      status: 'processing',
-      message: 'Refinement is still in progress',
-      minutesElapsed: minutesElapsed.toFixed(1)
+      },
+      failedAt: new Date().toISOString()
     });
     
-  } catch (error) {
+    return res.json({
+      status: 'failed',
+      error: 'Refinement process timed out. Please try again.',
+      minutesElapsed: minutesElapsed.toFixed(1)
+    });
+  }
+}} catch (error) {
     logger.error('Error checking refinement status:', error);
     res.status(500).json({ error: error.message });
   }
@@ -934,16 +1009,17 @@ app.post('/api/free-pass-submit', express.json(), async (req, res) => {
     try {
       // Only proceed if we have all the required data
       if (jobData.jobUrl && jobData.cvHTML) {
-        // Start refinement process with job data
+        // Trigger refinement process immediately
         const refineUrl = `${process.env.APP_URL || 'http://localhost:8080'}/refine`;
-        logger.info(`Starting refinement for free pass user at: ${refineUrl}`);
-        
+        logger.info(`Starting credit-based refinement for jobId: ${jobId}`);
+
         const refineResponse = await fetch(refineUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
+            orderId: `credit-${jobId}`,
             jobId,
-            orderId: `free-${jobId}`, // Mark as free pass
+            tabSessionId,
             conversation: [],
             jobUrl: jobData.jobUrl,
             cvHTML: jobData.cvHTML,
@@ -951,7 +1027,20 @@ app.post('/api/free-pass-submit', express.json(), async (req, res) => {
             userEmail: email // Include the email for tracking
           })
         });
-        
+        // Wait a moment for the refinement to start processing
+        await new Promise(resolve => setTimeout(resolve, 500));
+
+        // Don't overwrite the status if refinement has already updated it
+        const currentJobData = await getJobData(jobId);
+        if (currentJobData && currentJobData.status !== 'completed' && currentJobData.status !== 'processing') {
+          // Only update if still in initial state
+          await setJobData(jobId, {
+            ...currentJobData,
+            creditUsed: true,
+            creditUsedAt: new Date().toISOString()
+          });
+        }
+
         if (!refineResponse.ok) {
           logger.error(`Error from refinement endpoint: ${refineResponse.status}`);
           const errorText = await refineResponse.text();

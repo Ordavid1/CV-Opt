@@ -38,7 +38,7 @@ export function createCVRefinementPrompt(extractedKeywords, cvHTML, level, addit
 
       6) COMPLETE OUTPUT: Output must be the FULL CV refined HTML, not a summary, not a snippest, without commentary. Do NOT shorten or remove entire sections or headings. 
       
-      7) MAINTAIN HTML FORMATTING: Preserve all HTML tags, attributes, structure and formatting of the original document. Do NOT add or remove any HTML tags. Ensure all HTML tags are properly closed and nested. Do not modify the HTML structure in any way that would change the visual formatting.
+      7) MAINTAIN HTML FORMATTING: Preserve all HTML tags, attributes, structure and formatting of the original document, including font type and size, text format, page format. Do NOT add or remove any HTML tags. Ensure all HTML tags are properly closed and nested. Do not modify the HTML structure in any way that would change the visual formatting.
       
       8) If the CV pasted by the user has a "Skills" section with the title/headline "Skills" or similar (where the user list his skills), don't refine it. Leave it as is and present it as is in the output.
       

@@ -66,6 +66,18 @@ gcloud run deploy $SERVICE_NAME \
     --memory=512Mi \
     --allow-unauthenticated
 
+# Create Cloud Tasks queue if it doesn't exist
+echo "Ensuring Cloud Tasks queue exists..."
+gcloud tasks queues create cv-refinement-queue \
+  --location=us-east1 \
+  --project=$PROJECT_ID \
+  --max-dispatches-per-second=10 \
+  --max-concurrent-dispatches=5 \
+  --max-attempts=3 \
+  --min-backoff=60s \
+  --max-backoff=300s \
+  --quiet 2>/dev/null || echo "Queue already exists or creation skipped"
+
 # Verify deployment
 log "Verifying deployment..."
 gcloud run services describe $SERVICE_NAME --region $REGION || error "Service verification failed"

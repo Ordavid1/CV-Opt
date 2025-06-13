@@ -1,9 +1,11 @@
 // taskqueue.mjs
 import { CloudTasksClient } from '@google-cloud/tasks';
 import winston from 'winston';
+import fetch from 'node-fetch'; // Add this import for development mode
 
+// Environment detection
 const IS_LOCAL = process.env.NODE_ENV !== 'production';
-
+const ENABLE_CLOUD_TASKS = process.env.ENABLE_CLOUD_TASKS === 'true' || !IS_LOCAL;
 
 const logger = winston.createLogger({
   level: 'info',
@@ -21,17 +23,15 @@ const tasksClient = new CloudTasksClient();
 const PROJECT_ID = process.env.GOOGLE_CLOUD_PROJECT || 'vaulted-bivouac-417511';
 const LOCATION = 'us-east1';
 const QUEUE_NAME = 'cv-refinement-queue';
-const SERVICE_URL = process.env.APP_URL;
+let SERVICE_URL = process.env.APP_URL;
 
 if (!SERVICE_URL) {
-  logger.error('APP_URL environment variable is not set!');
-  
-  // Only use localhost as fallback in development
-  if (process.env.NODE_ENV === 'development') {
-    const fallbackUrl = 'http://localhost:8080';
-    logger.warn(`Using development fallback URL: ${fallbackUrl}`);
-    SERVICE_URL = fallbackUrl;
+  // Only allow missing APP_URL in local development
+  if (IS_LOCAL) {
+    SERVICE_URL = 'http://localhost:8080';
+    logger.warn(`APP_URL not set, using development fallback: ${SERVICE_URL}`);
   } else {
+    logger.error('FATAL: APP_URL environment variable is not set in production!');
     throw new Error('APP_URL must be set in production environment');
   }
 }
@@ -39,6 +39,12 @@ if (!SERVICE_URL) {
 logger.info(`Task queue will send requests to: ${SERVICE_URL}`);
 
 export async function createQueue() {
+  // Skip queue creation in local development
+  if (IS_LOCAL && process.env.ENABLE_CLOUD_TASKS !== 'true') {
+    logger.info('Skipping Cloud Tasks queue creation in local environment');
+    return;
+  }
+  
   const parent = tasksClient.locationPath(PROJECT_ID, LOCATION);
   const queue = {
     name: tasksClient.queuePath(PROJECT_ID, LOCATION, QUEUE_NAME),
@@ -48,8 +54,10 @@ export async function createQueue() {
     },
     retryConfig: {
       maxAttempts: 3,
-      maxBackoff: { seconds: 300 },
+      maxRetryDuration: { seconds: 3600 }, // 1 hour max
       minBackoff: { seconds: 60 },
+      maxBackoff: { seconds: 300 },
+      maxDoublings: 3,
     },
   };
 
@@ -59,6 +67,9 @@ export async function createQueue() {
   } catch (error) {
     if (error.code === 6) { // Already exists
       logger.info(`Queue ${QUEUE_NAME} already exists`);
+    } else if (error.code === 7) { // Permission denied
+      logger.error('Permission denied creating queue - check service account permissions');
+      throw error;
     } else {
       logger.error('Error creating queue:', error);
       throw error;
@@ -67,58 +78,101 @@ export async function createQueue() {
 }
 
 export async function enqueueRefinementJob(jobData) {
-      // For local development, process directly instead of using Cloud Tasks
-  if (IS_LOCAL) {
-    logger.info(`Local development: Processing refinement directly for job ${jobData.jobId}`);
-    console.warn('Running in local mode, not using Cloud Tasks. This is for development only.');
+  // Use IS_LOCAL instead of isDevelopment
+  if (IS_LOCAL && !process.env.ENABLE_CLOUD_TASKS) {
+    logger.info('Running locally - bypassing Cloud Tasks, processing synchronously');
     
-    // Import and call processRefinementAsync directly
-    const { processRefinementAsync } = await import('./index.mjs');
-    
-    // Process in background (fire and forget for local dev)
-    processRefinementAsync(jobData, logger)
-      .then(result => {
-        logger.info(`✅ Local refinement completed for job ${jobData.jobId}`);
-      })
-      .catch(err => {
-        logger.error(`❌ Local refinement failed for job ${jobData.jobId}:`, err);
+    try {
+      // Make a direct HTTP call to simulate task processing
+      const response = await fetch(`${SERVICE_URL}/api/process-refinement-task`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CloudTasks-TaskName': `local-task-${Date.now()}` // Changed from dev-task
+        },
+        body: JSON.stringify({
+          ...jobData,
+          taskId: `local-task-${Date.now()}-${Math.random().toString(36).substring(2)}`
+        })
       });
-    
-    // Return a fake task name
-    return `local-task-${jobData.jobId}`;
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Failed to process task: ${response.status} - ${errorText}`);
+      }
+      
+      logger.info(`Local task processed successfully for job ${jobData.jobId}`);
+      return `local-task-${jobData.jobId}`;
+      
+    } catch (error) {
+      logger.error('Failed to process local task:', error);
+      throw error;
+    }
   }
-
-    // For production, enqueue the job in Cloud Tasks
-  const parent = tasksClient.queuePath(PROJECT_ID, LOCATION, QUEUE_NAME);
-  const task = {
-    httpRequest: {
-      httpMethod: 'POST',
-      url: `${SERVICE_URL}/api/process-refinement-task`,
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: Buffer.from(JSON.stringify({
-        ...jobData,
-        taskId: `task-${Date.now()}-${Math.random().toString(36).substring(2)}`
-      })).toString('base64'),
-    },
-    // Schedule to run immediately
-    scheduleTime: {
-      seconds: Math.floor(Date.now() / 1000),
-    },
-  };
-
+  
+  // Production mode - use Cloud Tasks
   try {
+    const parent = tasksClient.queuePath(PROJECT_ID, LOCATION, QUEUE_NAME);
+    
+    // Generate unique task ID
+    const taskId = `task-${Date.now()}-${Math.random().toString(36).substring(2)}`;
+    
+    // Prepare task configuration
+    const task = {
+      httpRequest: {
+        httpMethod: 'POST',
+        url: `${SERVICE_URL}/api/process-refinement-task`,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: Buffer.from(JSON.stringify({
+          ...jobData,
+          taskId: taskId,
+          enqueuedAt: new Date().toISOString()
+        })).toString('base64'),
+      },
+      // Add OIDC token for Cloud Run authentication
+      oidcToken: {
+        serviceAccountEmail: `cv-opt@${PROJECT_ID}.iam.gserviceaccount.com`,
+        audience: SERVICE_URL,
+      },
+      // Schedule to run immediately
+      scheduleTime: {
+        seconds: Math.floor(Date.now() / 1000),
+      },
+    };
+    
+    // Create the task
+    logger.info(`Creating Cloud Task for job ${jobData.jobId}`);
     const [response] = await tasksClient.createTask({ parent, task });
-    logger.info(`Created task ${response.name} for job ${jobData.jobId}`);
+    
+    logger.info(`✅ Created task ${response.name} for job ${jobData.jobId}`);
+    
+    // Return the task name for tracking
     return response.name;
+    
   } catch (error) {
-    logger.error('Error creating task:', error);
+    logger.error(`❌ Error creating Cloud Task for job ${jobData.jobId}:`, error);
+    
+    // Check for specific error types
+    if (error.code === 3) {
+      logger.error('Invalid argument error - check task configuration');
+    } else if (error.code === 7) {
+      logger.error('Permission denied - check service account permissions');
+    } else if (error.code === 9) {
+      logger.error('Queue is full or task already exists');
+    }
+    
+    // Re-throw the error to be handled by the caller
     throw error;
   }
 }
 
 // Initialize queue on module load
-createQueue().catch(err => {
-  logger.error('Failed to create queue:', err);
-});
+if (!IS_LOCAL || process.env.ENABLE_CLOUD_TASKS === 'true') {
+  createQueue().catch(err => {
+    logger.error('Failed to create queue:', err);
+  });
+} else {
+  logger.info('Cloud Tasks disabled in local environment');
+}
