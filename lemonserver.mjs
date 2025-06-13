@@ -220,15 +220,15 @@ app.post('/api/create-checkout', express.json(), async (req, res) => {
       }
     }
     
-    // Generate userId for free pass and credits check
-    const userId = generateUserId(req);
-    logger.info(`User ID: ${userId.substring(0, 8)}...`);
+  // Generate userId for free pass and credits check
+  const userId = generateUserId(req);
+  logger.info(`User ID: ${userId.substring(0, 8)}...`);
 
-// Check if user has credits first
-const userCredits = getUserCredits(userId);
-if (userCredits > 0) {
+  // Check if user has credits first
+  const userCredits = getUserCredits(userId);
+  if (userCredits > 0) {
   logger.info(`User has ${userCredits} credits, using credit instead of payment`);
-  
+
   // Deduct one credit
   deductUserCredit(userId);
   saveCreditsStorage(); // Save the credit deduction
