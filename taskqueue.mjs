@@ -21,7 +21,22 @@ const tasksClient = new CloudTasksClient();
 const PROJECT_ID = process.env.GOOGLE_CLOUD_PROJECT || 'vaulted-bivouac-417511';
 const LOCATION = 'us-east1';
 const QUEUE_NAME = 'cv-refinement-queue';
-const SERVICE_URL = process.env.APP_URL || 'https://cv-opt-pknfmfz3-ue.a.run.app';
+const SERVICE_URL = process.env.APP_URL;
+
+if (!SERVICE_URL) {
+  logger.error('APP_URL environment variable is not set!');
+  
+  // Only use localhost as fallback in development
+  if (process.env.NODE_ENV === 'development') {
+    const fallbackUrl = 'http://localhost:8080';
+    logger.warn(`Using development fallback URL: ${fallbackUrl}`);
+    SERVICE_URL = fallbackUrl;
+  } else {
+    throw new Error('APP_URL must be set in production environment');
+  }
+}
+
+logger.info(`Task queue will send requests to: ${SERVICE_URL}`);
 
 export async function createQueue() {
   const parent = tasksClient.locationPath(PROJECT_ID, LOCATION);
