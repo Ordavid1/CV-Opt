@@ -342,7 +342,7 @@ async function testOpenAIConnection() {
   
   try {
     const testResponse = await openai.chat.completions.create({
-      model: "gpt-4.1-nano",
+      model: "o4-mini",
       messages: [{ role: "user", content: "Test" }],
     });
     
@@ -515,7 +515,7 @@ app.post('/partial', async (req, res) => {
     }
 
     const partialResponse = await openai.chat.completions.create({
-      model: "gpt-4.1-nano",
+      model: "o4-mini",
       messages: conversation,
     });
 
@@ -724,7 +724,7 @@ app.post('/refine', async (req, res) => {
     logger.debug(`keywordsPrompt: ${keywordsPrompt.slice(0,300)}...`);
 
     const keywordsResp = await openai.chat.completions.create({
-      model: "gpt-4.1-nano",
+      model: "o4-mini",
       messages: [{ role: "user", content: keywordsPrompt }],
     });
     logger.debug(`keywordsResp raw: ${JSON.stringify(keywordsResp, null, 2).slice(0,500)}...`);
@@ -750,7 +750,7 @@ app.post('/refine', async (req, res) => {
     // 5. Call the model again with the updated conversation
     // -------------------------------------------------------------------
     const refineResp = await openai.chat.completions.create({
-      model: "gpt-4.1-nano",
+      model: "o4-mini",
       messages: newConversation,
     });
     logger.debug(`refineResp raw: ${JSON.stringify(refineResp, null, 2).slice(0,500)}...`);
@@ -898,7 +898,7 @@ async function processRefinementAsync(data, logger) {
         try {
           const keywordsResp = await Promise.race([
             openai.chat.completions.create({
-              model: "gpt-4.1-nano",
+              model: "o4-mini",
               messages: [{ role: "user", content: keywordsPrompt }],
             }),
             new Promise((_, reject) => 
@@ -953,7 +953,7 @@ async function processRefinementAsync(data, logger) {
           logger.info(`LLM refinement attempt ${retries + 1} starting...`);
           const refineResp = await Promise.race([
             openai.chat.completions.create({
-              model: "gpt-4.1-nano",
+              model: "o4-mini",
               messages: messages,
               max_completion_tokens: 32000
             }),
