@@ -1,6 +1,7 @@
 // lemonserver.mjs
 import express from 'express';
 import crypto from 'crypto';
+import { createInitialGreeting } from './public/promptTemplates.mjs';
 import { 
   jobDataStorage, 
   hasUsedFreePass, 
@@ -253,7 +254,6 @@ app.post('/api/create-checkout', express.json(), async (req, res) => {
     const refineUrl = `${process.env.APP_URL || 'http://localhost:8080'}/refine`;
     logger.info(`Starting credit-based refinement for jobId: ${jobId}`);
     
-    // Don't wait for refinement to complete - just trigger it
     fetch(refineUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -261,7 +261,9 @@ app.post('/api/create-checkout', express.json(), async (req, res) => {
         orderId: `credit-${jobId}`, // Mark as credit-based
         jobId,
         tabSessionId,
-        conversation: [],
+        conversation: [
+          { role: "user", content: createInitialGreeting() }
+        ],
         jobUrl: jobData.jobUrl,
         cvHTML: jobData.cvHTML,
         refinementLevel: jobData.refinementLevel || 5
@@ -689,6 +691,18 @@ app.post('/webhooks/lemonsqueezy', express.raw({ type: 'application/json' }), as
         try {
           logger.info(`🔄 Enqueueing refinement for jobId: ${jobId} at level: ${finalRefinementLevel}`);
           
+          // Before calling enqueueRefinementJob
+          if (jobId) {
+            const existingData = await getJobData(jobId) || {};
+            await setJobData(jobId, {
+              ...existingData,
+              status: 'paid', // Add this status
+              paidAt: new Date().toISOString(),
+              orderId: orderId
+            });
+            logger.info(`Updated job ${jobId} status to 'paid'`);
+          }
+          
           // Import the enqueue function at the top of lemonserver.mjs
           const { enqueueRefinementJob } = await import('./taskqueue.mjs');
           
@@ -699,6 +713,13 @@ app.post('/webhooks/lemonsqueezy', express.raw({ type: 'application/json' }), as
             // In local mode, don't update status after enqueueing since it runs synchronously
             logger.info(`🔄 Enqueueing refinement for jobId: ${jobId} at level: ${finalRefinementLevel} (local mode)`);
             
+            // First update status to processing
+            await setJobData(jobId, {
+              ...jobData,
+              status: 'processing',
+              processingStartedAt: new Date().toISOString()
+            });
+
             await enqueueRefinementJob({
               orderId,
               jobId,
@@ -842,7 +863,7 @@ app.post('/api/refinement-status', express.json(), async (req, res) => {
       const minutesElapsed = (now - startTime) / (1000 * 60);
       
       // If processing for more than 10 minutes, it's likely stuck
-      if (minutesElapsed > 10) {
+      if (minutesElapsed > 5) {
         logger.warn(`Job ${jobId} has been processing for ${minutesElapsed.toFixed(1)} minutes - likely stuck`);
         
         // Update the job status to failed
@@ -1169,6 +1190,18 @@ app.get('/api/check-credits', (req, res) => {
     hasCredits: credits > 0,
     userId: userId.substring(0, 8) + '...'
   });
+});
+
+// Add this to lemonserver.mjs temporarily
+app.get('/api/debug/recent-jobs', async (req, res) => {
+  const jobs = [];
+  for (const [key, value] of jobDataStorage.entries()) {
+    if (key.startsWith('job_') || key.length === 32) {
+      jobs.push({ jobId: key, ...value });
+    }
+  }
+  jobs.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+  res.json(jobs.slice(0, 10));
 });
 
 // Admin endpoint to view free pass stats

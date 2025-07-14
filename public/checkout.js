@@ -1197,6 +1197,16 @@ function pollRefinementStatus(jobId) {
       }
       
       const data = await response.json();
+      console.log('Status check response:', data);
+      
+      // Add more status handling
+      if (data.status === 'paid') {
+        messageElement.textContent = '⏳ Payment confirmed, starting processing...';
+      } else if (data.status === 'queued') {
+        messageElement.textContent = '⏳ Your request is queued...';
+      } else if (data.status === 'processing') {
+        messageElement.textContent = '⏳ Processing your CV...';
+      }
       
     // HANDLE BUNDLE PURCHASE STATUS
     if (data.status === 'bundle_purchase') {

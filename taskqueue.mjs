@@ -3,10 +3,6 @@ import { CloudTasksClient } from '@google-cloud/tasks';
 import winston from 'winston';
 import fetch from 'node-fetch'; // Add this import for development mode
 
-// Environment detection
-const IS_LOCAL = process.env.NODE_ENV !== 'production';
-const ENABLE_CLOUD_TASKS = process.env.ENABLE_CLOUD_TASKS === 'true' || !IS_LOCAL;
-
 const logger = winston.createLogger({
   level: 'info',
   format: winston.format.combine(
@@ -15,6 +11,11 @@ const logger = winston.createLogger({
   ),
   transports: [new winston.transports.Console()]
 });
+
+// Environment detection
+const IS_LOCAL = process.env.NODE_ENV !== 'production';
+const ENABLE_CLOUD_TASKS = IS_LOCAL ? (process.env.ENABLE_CLOUD_TASKS === 'true') : true;
+logger.info(`Task Queue Configuration: IS_LOCAL=${IS_LOCAL}, ENABLE_CLOUD_TASKS=${ENABLE_CLOUD_TASKS}`);
 
 // Initialize Cloud Tasks client
 const tasksClient = new CloudTasksClient();
@@ -79,36 +80,60 @@ export async function createQueue() {
 
 export async function enqueueRefinementJob(jobData) {
   // Use IS_LOCAL instead of isDevelopment
-  if (IS_LOCAL && !process.env.ENABLE_CLOUD_TASKS) {
-    logger.info('Running locally - bypassing Cloud Tasks, processing synchronously');
-    
-    try {
-      // Make a direct HTTP call to simulate task processing
-      const response = await fetch(`${SERVICE_URL}/api/process-refinement-task`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-CloudTasks-TaskName': `local-task-${Date.now()}` // Changed from dev-task
-        },
-        body: JSON.stringify({
-          ...jobData,
-          taskId: `local-task-${Date.now()}-${Math.random().toString(36).substring(2)}`
-        })
+if (IS_LOCAL && !process.env.ENABLE_CLOUD_TASKS) {
+  logger.info('Running locally - processing synchronously');
+  
+  try {
+    // Update status to processing FIRST
+    if (jobData.jobId) {
+      const { setJobData, getJobData } = await import('./storage.mjs');
+      const existingData = await getJobData(jobData.jobId) || {};
+      await setJobData(jobData.jobId, {
+        ...existingData,
+        status: 'processing',
+        processingStartedAt: new Date().toISOString()
       });
-      
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Failed to process task: ${response.status} - ${errorText}`);
-      }
-      
-      logger.info(`Local task processed successfully for job ${jobData.jobId}`);
-      return `local-task-${jobData.jobId}`;
-      
-    } catch (error) {
-      logger.error('Failed to process local task:', error);
-      throw error;
     }
+    
+    // Make a direct HTTP call to simulate task processing
+    const response = await fetch(`${SERVICE_URL}/api/process-refinement-task`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CloudTasks-TaskName': `local-task-${Date.now()}`
+      },
+      body: JSON.stringify({
+        ...jobData,
+        taskId: `local-task-${Date.now()}-${Math.random().toString(36).substring(2)}`
+      })
+    });
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Failed to process task: ${response.status} - ${errorText}`);
+    }
+    
+    logger.info(`Local task processed successfully for job ${jobData.jobId}`);
+    return `local-task-${jobData.jobId}`;
+    
+  } catch (error) {
+    logger.error('Failed to process local task:', error);
+    
+    // Update status to failed
+    if (jobData.jobId) {
+      const { setJobData, getJobData } = await import('./storage.mjs');
+      const existingData = await getJobData(jobData.jobId) || {};
+      await setJobData(jobData.jobId, {
+        ...existingData,
+        status: 'failed',
+        error: error.message,
+        failedAt: new Date().toISOString()
+      });
+    }
+    
+    throw error;
   }
+}
   
   // Production mode - use Cloud Tasks
   try {

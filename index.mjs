@@ -658,9 +658,11 @@ app.post('/refine', async (req, res) => {
       logger.info(`✅ Updated job data for jobId: ${jobId} with refinement level: ${level} and tabSessionId: ${tabSessionId}`);
     }
 
-    // CRITICAL: Check if this is a webhook call (has orderId)
-    if (orderId) {
-      logger.info("✅ Webhook-triggered refinement - enqueueing to Cloud Tasks");
+      // CRITICAL: Check if this is a webhook call (has orderId but NOT credit-based)
+      // Credit-based refinements should be processed synchronously
+      const isCreditBased = orderId && orderId.startsWith('credit-');
+      if (orderId && !isCreditBased) {
+        logger.info("✅ Webhook-triggered refinement - enqueueing to Cloud Tasks");
       
       try {
         // Enqueue the job to Cloud Tasks
@@ -743,16 +745,39 @@ app.post('/refine', async (req, res) => {
     // -------------------------------------------------------------------
     // 4. Append a final user message with the full CV, job URL, refinement level, and additional instruction.
     // -------------------------------------------------------------------
-    const newConversation = [...conversation]; // Create a copy to avoid modifying the original
-    newConversation.push({
-      role: "user",
-      content: createCVRefinementPrompt(
-        extractedKeywords, 
-        cvHTML, 
-        level, 
-        additionalInstruction
-      )
-    });
+      let newConversation;
+      if (conversation && conversation.length > 0) {
+        // For credit/free-pass calls with initial greeting
+        newConversation = [
+          ...conversation,
+          {
+            role: "assistant",
+            content: "Yes, I'm ready to help refine your CV. Please provide the CV and job details."
+          },
+          {
+            role: "user",
+            content: createCVRefinementPrompt(
+              extractedKeywords, 
+              cvHTML, 
+              level, 
+              additionalInstruction
+            )
+          }
+        ];
+      } else {
+        // For direct refinement calls
+        newConversation = [
+          {
+            role: "user",
+            content: createCVRefinementPrompt(
+              extractedKeywords, 
+              cvHTML, 
+              level, 
+              additionalInstruction
+            )
+          }
+        ];
+      }
 
     // -------------------------------------------------------------------
     // 5. Call the model again with the updated conversation
@@ -952,27 +977,51 @@ async function processRefinementAsync(data, logger) {
       ];
 
       // 5. Call OpenAI for refinement – fetch only once, then retry LLM calls
+      // 5. Call OpenAI for refinement with proper timeout
       stage = 'refining CV';
-      logger.info("Calling OpenAI for CV refinement with retry loop...");
+      logger.info("Calling OpenAI for CV refinement...");
+
       let finalReply = '';
       retries = 0;
       while (retries < maxRetries) {
         try {
           logger.info(`LLM refinement attempt ${retries + 1} starting...`);
+          
+          // Add request size logging
+          const requestSize = JSON.stringify(messages).length;
+          logger.info(`Request size: ${requestSize} characters`);
+          
+          // If request is too large, truncate CV
+          if (requestSize > 50000) {
+            logger.warn('Request too large, truncating CV...');
+            messages[messages.length - 1].content = messages[messages.length - 1].content.substring(0, 30000) + '...';
+          }
+          
           const refineResp = await Promise.race([
             openai.chat.completions.create({
               model: "o4-mini",
               messages: messages,
-              max_completion_tokens: 32000
             }),
-            new Promise((_, reject) => setTimeout(() => reject(new Error('OpenAI refinement timeout')), 180000))
+            new Promise((_, reject) => 
+              setTimeout(() => reject(new Error('OpenAI refinement timeout')), 120000) // 2 minutes instead of 3
+            )
           ]);
+          
           finalReply = refineResp.choices[0].message.content.trim();
           logger.info(`LLM refinement succeeded on attempt ${retries + 1}, length: ${finalReply.length}`);
           break;
         } catch (error) {
           retries++;
-          logger.warn(`LLM attempt ${retries} failed: ${error.message}, retrying...`);
+          logger.error(`LLM attempt ${retries} failed: ${error.message}`);
+          
+          if (error.message.includes('timeout')) {
+            logger.error('OpenAI API timeout - request took too long');
+          } else if (error.code === 'context_length_exceeded') {
+            logger.error('Context length exceeded - CV or job description too long');
+            // Try with shorter content
+            messages[messages.length - 1].content = messages[messages.length - 1].content.substring(0, 20000) + '...';
+          }
+          
           if (retries >= maxRetries) throw error;
           await new Promise(resolve => setTimeout(resolve, 2000 * retries));
         }
