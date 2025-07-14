@@ -486,6 +486,14 @@ app.get('/health', async (_req, res) => {
   }
 });
 
+app.get('/version', (_req, res) => {
+  res.json({
+    version: process.env.COMMIT_SHA || 'unknown',
+    deployedAt: process.env.DEPLOY_TIME || new Date().toISOString(),
+    environment: process.env.NODE_ENV || 'development'
+  });
+});
+
 // DELETE ALL THE DUPLICATE CODE HERE
 
 app.get('/', (_req, res, next) => {
