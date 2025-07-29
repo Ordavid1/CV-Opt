@@ -832,6 +832,321 @@
         doc.body.innerHTML = `<p class="placeholder">${placeholder}</p>`;
       }
 
+      // Function to display changes in an iframe with CV formatting
+      function displayChangesInIframe(refinedHTML, changesData) {
+        const changesContainer = document.getElementById("changes");
+        changesContainer.innerHTML = '<h3>Changes Made to Your CV</h3>';
+        
+        // Create the changes content wrapper
+        const changesContent = document.createElement('div');
+        changesContent.className = 'changes-content';
+        
+        // Create iframe
+        const changesIframe = document.createElement('iframe');
+        changesIframe.className = 'changes-iframe';
+        changesIframe.srcdoc = "<html><body></body></html>";
+        
+        changesContent.appendChild(changesIframe);
+        changesContainer.appendChild(changesContent);
+        
+        // Wait for iframe to load
+        changesIframe.onload = () => {
+          const iframeDoc = changesIframe.contentDocument;
+          if (!iframeDoc) return;
+          
+          // Copy styles from the output frame
+          const outputFrame = document.getElementById('cvOutputFrame');
+          const outputDoc = outputFrame.contentDocument;
+          if (outputDoc) {
+            // Copy all stylesheets
+            const styleSheets = outputDoc.querySelectorAll('style, link[rel="stylesheet"]');
+            styleSheets.forEach(sheet => {
+              iframeDoc.head.appendChild(sheet.cloneNode(true));
+            });
+          }
+          
+          // Add custom style for diff highlights
+          const diffStyle = iframeDoc.createElement('style');
+          diffStyle.textContent = `
+            .diff-added {
+              background-color: rgba(16, 185, 129, 0.25) !important;
+              color: inherit !important;
+              text-decoration: none;
+              padding: 2px 4px;
+              border-radius: 3px;
+              border: 1px solid rgba(16, 185, 129, 0.4);
+            }
+            .diff-removed {
+              background-color: rgba(239, 68, 68, 0.25) !important;
+              color: inherit !important;
+              text-decoration: line-through;
+              padding: 2px 4px;
+              border-radius: 3px;
+              border: 1px solid rgba(239, 68, 68, 0.4);
+              opacity: 0.7;
+            }
+            body {
+              margin: 20px;
+              font-family: Arial, sans-serif;
+            }
+            
+            /* Keep removed content inline */
+            .removed-inline {
+              display: inline;
+              margin: 0 4px;
+            }
+          `;
+          iframeDoc.head.appendChild(diffStyle);
+          
+          // Process and display the changes
+          const processedHTML = mergeChangesWithCV(refinedHTML, changesData);
+          iframeDoc.body.innerHTML = processedHTML;
+        };
+        
+        // Add legend
+        const legend = document.createElement('div');
+        legend.className = 'changes-legend';
+        legend.innerHTML = `
+          <div class="legend-item">
+            <span class="legend-color diff-added"></span>
+            <span class="legend-text">Added content</span>
+          </div>
+          <div class="legend-item">
+            <span class="legend-color diff-removed"></span>
+            <span class="legend-text">Removed content (strikethrough)</span>
+          </div>
+        `;
+        changesContainer.appendChild(legend);
+      }
+      
+      // Function to merge changes inline with the CV formatting
+      function mergeChangesWithCV(refinedHTML, changesData) {
+        // Simply use the refined HTML and inject diff styles
+        // The changes data already contains the properly marked up text
+        
+        // First, let's create a wrapper that contains both the formatted CV and diff overlays
+        const wrapper = document.createElement('div');
+        wrapper.innerHTML = refinedHTML;
+        
+        // Now parse the changes data to understand what was added/removed
+        const tempChanges = document.createElement('div');
+        tempChanges.innerHTML = changesData;
+        
+        // Extract all diff text content
+        const addedTexts = [];
+        const removedTexts = [];
+        
+        tempChanges.querySelectorAll('.diff-added').forEach(span => {
+          const text = span.textContent.trim();
+          if (text) addedTexts.push(text);
+        });
+        
+        tempChanges.querySelectorAll('.diff-removed').forEach(span => {
+          const text = span.textContent.trim();
+          if (text) removedTexts.push(text);
+        });
+        
+        // Function to highlight text in the wrapper
+        function highlightTextInElement(element, searchText, className) {
+          if (element.nodeType === Node.TEXT_NODE) {
+            const text = element.textContent;
+            const index = text.indexOf(searchText);
+            if (index !== -1) {
+              const before = text.substring(0, index);
+              const match = text.substring(index, index + searchText.length);
+              const after = text.substring(index + searchText.length);
+              
+              const parent = element.parentNode;
+              
+              // Replace the text node with highlighted version
+              const beforeNode = document.createTextNode(before);
+              const highlightSpan = document.createElement('span');
+              highlightSpan.className = className;
+              highlightSpan.textContent = match;
+              const afterNode = document.createTextNode(after);
+              
+              parent.replaceChild(afterNode, element);
+              parent.insertBefore(highlightSpan, afterNode);
+              parent.insertBefore(beforeNode, highlightSpan);
+              
+              return true;
+            }
+          } else if (element.nodeType === Node.ELEMENT_NODE) {
+            // Skip if this is already a diff span
+            if (element.classList.contains('diff-added') || element.classList.contains('diff-removed')) {
+              return false;
+            }
+            
+            // Process child nodes
+            const children = Array.from(element.childNodes);
+            for (const child of children) {
+              if (highlightTextInElement(child, searchText, className)) {
+                return true;
+              }
+            }
+          }
+          return false;
+        }
+        
+        // Apply highlights for added text
+        addedTexts.forEach(text => {
+          if (text.length > 3) { // Skip very short text to avoid false matches
+            highlightTextInElement(wrapper, text, 'diff-added');
+          }
+        });
+        
+        // Add a summary of removed content at the bottom
+        if (removedTexts.length > 0) {
+          const removedSection = document.createElement('div');
+          removedSection.style.cssText = 'margin-top: 30px; padding: 20px; background: #fff5f5; border: 1px solid #ffdddd; border-radius: 8px;';
+          removedSection.innerHTML = `
+            <h4 style="color: #d00; margin: 0 0 15px 0; font-size: 16px;">Content Removed During Optimization:</h4>
+            <div style="color: #666;">
+              ${removedTexts.map(text => `<p style="margin: 5px 0;"><span class="diff-removed">${text}</span></p>`).join('')}
+            </div>
+          `;
+          wrapper.appendChild(removedSection);
+        }
+        
+        return wrapper.innerHTML;
+      }
+      
+      // Helper function to apply diff highlights to formatted CV
+      function applyDiffToFormattedCV(refinedHTML, changesData) {
+        // Parse the changes data to get a complete picture of the diff
+        const tempDiv = document.createElement('div');
+        tempDiv.innerHTML = changesData;
+        
+        // Build the complete document with both additions and removals inline
+        let processedHTML = '';
+        let currentPosition = 0;
+        
+        // Get all the diff elements in order
+        const allDiffElements = tempDiv.querySelectorAll('.diff-added, .diff-removed, *');
+        
+        // Process the diff to recreate the CV with inline changes
+        const walker = document.createTreeWalker(
+          tempDiv,
+          NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT,
+          null,
+          false
+        );
+        
+        let node;
+        let htmlParts = [];
+        
+        while (node = walker.nextNode()) {
+          if (node.nodeType === Node.TEXT_NODE) {
+            const parent = node.parentElement;
+            if (parent && parent.classList.contains('diff-added')) {
+              // Add with green highlight
+              htmlParts.push(`<span class="diff-added">${node.textContent}</span>`);
+            } else if (parent && parent.classList.contains('diff-removed')) {
+              // Add with red strikethrough
+              htmlParts.push(`<span class="diff-removed">${node.textContent}</span>`);
+            } else if (!parent || (!parent.classList.contains('diff-added') && !parent.classList.contains('diff-removed'))) {
+              // Regular text
+              htmlParts.push(node.textContent);
+            }
+          }
+        }
+        
+        // Since the diff data is plain text, we need to merge it with the formatted CV structure
+        // Let's use a different approach: inject the formatted CV and then overlay the changes
+        
+        // Create a temporary container with the refined HTML
+        const cvContainer = document.createElement('div');
+        cvContainer.innerHTML = refinedHTML;
+        
+        // Now we need to intelligently merge the diff information
+        // For a better approach, let's parse both the original and refined content from the diff
+        
+        // Extract sequences of added and removed content
+        const changes = [];
+        let currentText = '';
+        let currentType = 'normal';
+        
+        // Walk through all nodes in the diff
+        const diffWalker = document.createTreeWalker(
+          tempDiv,
+          NodeFilter.SHOW_ALL,
+          null,
+          false
+        );
+        
+        let diffNode;
+        while (diffNode = diffWalker.nextNode()) {
+          if (diffNode.nodeType === Node.ELEMENT_NODE) {
+            if (diffNode.classList.contains('diff-added')) {
+              if (currentType !== 'added' && currentText) {
+                changes.push({ type: currentType, text: currentText });
+                currentText = '';
+              }
+              currentType = 'added';
+              currentText += diffNode.textContent;
+            } else if (diffNode.classList.contains('diff-removed')) {
+              if (currentType !== 'removed' && currentText) {
+                changes.push({ type: currentType, text: currentText });
+                currentText = '';
+              }
+              currentType = 'removed';
+              currentText += diffNode.textContent;
+            }
+          } else if (diffNode.nodeType === Node.TEXT_NODE && diffNode.parentElement === tempDiv) {
+            if (currentType !== 'normal' && currentText) {
+              changes.push({ type: currentType, text: currentText });
+              currentText = '';
+            }
+            currentType = 'normal';
+            currentText += diffNode.textContent;
+          }
+        }
+        
+        if (currentText) {
+          changes.push({ type: currentType, text: currentText });
+        }
+        
+        // Now create the final HTML with inline removed content
+        // Start with the refined HTML and inject removed content where appropriate
+        let finalHTML = refinedHTML;
+        
+        // Find positions to insert removed content
+        changes.forEach((change, index) => {
+          if (change.type === 'removed' && index > 0) {
+            // Find where this removed content should be inserted
+            // Look for the previous normal or added text in the final HTML
+            const prevChange = changes[index - 1];
+            if (prevChange && prevChange.text) {
+              // Try to find a good insertion point
+              const insertAfter = prevChange.text.slice(-50); // Last 50 chars of previous content
+              const insertionIndex = finalHTML.lastIndexOf(insertAfter);
+              
+              if (insertionIndex !== -1) {
+                const beforeInsertion = finalHTML.substring(0, insertionIndex + insertAfter.length);
+                const afterInsertion = finalHTML.substring(insertionIndex + insertAfter.length);
+                
+                // Insert the removed content with strikethrough
+                finalHTML = beforeInsertion + 
+                  ` <span class="diff-removed">${change.text}</span>` + 
+                  afterInsertion;
+              }
+            }
+          }
+        });
+        
+        // Also highlight added content in the final HTML
+        changes.forEach(change => {
+          if (change.type === 'added' && change.text.length > 3) {
+            // Escape special regex characters
+            const escapedText = change.text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const regex = new RegExp(`(?<!class="diff-[^"]*">)${escapedText}`, 'g');
+            finalHTML = finalHTML.replace(regex, `<span class="diff-added">${change.text}</span>`);
+          }
+        });
+        
+        return finalHTML;
+      }
+
       // Update function for output frame
       function updateOutputFrame(htmlContent) {
         const outDoc = document.getElementById('cvOutputFrame').contentDocument;
@@ -1423,19 +1738,9 @@
           // Update the output frame with normalized content
           updateOutputFrame(refinedHTML);
           
-          // Handle changes display
+          // Handle changes display with iframe
           if (data.changes) {
-            const changesContainer = document.getElementById("changes");
-            changesContainer.innerHTML = data.changes;
-            
-            const legend = document.createElement('div');
-            legend.style.marginTop = '1rem';
-            legend.style.fontSize = '0.9rem';
-            legend.innerHTML = `
-              <span class="diff-added">Green text</span> = Added content<br>
-              <span class="diff-removed">Red text</span> = Removed content
-            `;
-            changesContainer.appendChild(legend);
+            displayChangesInIframe(data.refinedHTML, data.changes);
           } else {
             document.getElementById("changes").innerHTML = 
               "<h3>Changes Made</h3><p>No changes data available.</p>";
@@ -1480,22 +1785,9 @@
               // Make sure we replace the entire body content
               updateOutputFrame(normalizeCV(data.refinedHTML));
               
-              // Update the changes display
+              // Update the changes display with iframe
               if (data.changes) {
-                const changesContainer = document.getElementById("changes");
-                
-                // Put the changes directly in the container
-                changesContainer.innerHTML = data.changes;
-                
-                // Add the legend after the changes content
-                const legend = document.createElement('div');
-                legend.style.marginTop = '1rem';
-                legend.style.fontSize = '0.9rem';
-                legend.innerHTML = `
-                  <span class="diff-added">Green text</span> = Added content<br>
-                  <span class="diff-removed">Red text</span> = Removed content
-                `;
-                changesContainer.appendChild(legend);
+                displayChangesInIframe(data.refinedHTML, data.changes);
               }
               
               // Show notification

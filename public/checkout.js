@@ -1261,20 +1261,26 @@ function pollRefinementStatus(jobId) {
           updateOutputFrame(data.refinedHTML);
           
           if (data.changes) {
-            const changesContainer = document.getElementById("changes");
-            changesContainer.innerHTML = '<h3>Changes Made</h3>';
-            const changesContent = document.createElement('div');
-            changesContent.className = 'changes-content';
-            changesContent.innerHTML = data.changes;
-            changesContainer.appendChild(changesContent);
-            const legend = document.createElement('div');
-            legend.style.marginTop = '1rem';
-            legend.style.fontSize = '0.9rem';
-            legend.innerHTML = `
-              <span class="diff-added">Green text</span> = Added content<br>
-              <span class="diff-removed">Red text</span> = Removed content
-            `;
-            changesContainer.appendChild(legend);
+            // Use the parent window's displayChangesInIframe function if available
+            if (window.displayChangesInIframe && typeof window.displayChangesInIframe === 'function') {
+              window.displayChangesInIframe(data.refinedHTML, data.changes);
+            } else {
+              // Fallback to simple display
+              const changesContainer = document.getElementById("changes");
+              changesContainer.innerHTML = '<h3>Changes Made</h3>';
+              const changesContent = document.createElement('div');
+              changesContent.className = 'changes-content';
+              changesContent.innerHTML = data.changes;
+              changesContainer.appendChild(changesContent);
+              const legend = document.createElement('div');
+              legend.style.marginTop = '1rem';
+              legend.style.fontSize = '0.9rem';
+              legend.innerHTML = `
+                <span class="diff-added">Green text</span> = Added content<br>
+                <span class="diff-removed">Red text</span> = Removed content
+              `;
+              changesContainer.appendChild(legend);
+            }
           }
           
           if (typeof showNotification === 'function') {
@@ -1384,20 +1390,26 @@ function pollRefinementStatus(jobId) {
           outDoc.body.innerHTML = data.refinedHTML;
           
           if (data.changes) {
-            const changesContainer = document.getElementById("changes");
-            changesContainer.innerHTML = '<h3>Changes Made</h3>';
-            const changesContent = document.createElement('div');
-            changesContent.className = 'changes-content';
-            changesContent.innerHTML = data.changes;
-            changesContainer.appendChild(changesContent);
-            const legend = document.createElement('div');
-            legend.style.marginTop = '1rem';
-            legend.style.fontSize = '0.9rem';
-            legend.innerHTML = `
-              <span class="diff-added">Green text</span> = Added content<br>
-              <span class="diff-removed">Red text</span> = Removed content
-            `;
-            changesContainer.appendChild(legend);
+            // Use the parent window's displayChangesInIframe function if available
+            if (window.displayChangesInIframe && typeof window.displayChangesInIframe === 'function') {
+              window.displayChangesInIframe(data.refinedHTML, data.changes);
+            } else {
+              // Fallback to simple display
+              const changesContainer = document.getElementById("changes");
+              changesContainer.innerHTML = '<h3>Changes Made</h3>';
+              const changesContent = document.createElement('div');
+              changesContent.className = 'changes-content';
+              changesContent.innerHTML = data.changes;
+              changesContainer.appendChild(changesContent);
+              const legend = document.createElement('div');
+              legend.style.marginTop = '1rem';
+              legend.style.fontSize = '0.9rem';
+              legend.innerHTML = `
+                <span class="diff-added">Green text</span> = Added content<br>
+                <span class="diff-removed">Red text</span> = Removed content
+              `;
+              changesContainer.appendChild(legend);
+            }
           }
           
           if (typeof showNotification === 'function') {
