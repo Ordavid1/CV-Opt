@@ -17,7 +17,7 @@ import helmet from 'helmet';
 import crypto from 'crypto';
 import cors from 'cors';
 import rateLimit from 'express-rate-limit';
-import { jobDataStorage, setJobData, getJobData, initBucket } from './storage.mjs';
+import { jobDataStorage, setJobData, getJobData, initBucket, saveCreditsStorage, saveFreePassUsage } from './storage.mjs';
 import initLemonSqueezyRoutes from './lemonserver.mjs';
 import { createCVRefinementPrompt, createInitialGreeting } from './public/promptTemplates.mjs';
 import { enqueueRefinementJob } from './taskqueue.mjs';
@@ -1233,6 +1233,56 @@ initBucket()
 
 // Export application and background processing function
 export { app, processRefinementAsync };
+
+// Graceful shutdown handling
+let isShuttingDown = false;
+
+async function gracefulShutdown(signal) {
+  if (isShuttingDown) return;
+  isShuttingDown = true;
+  
+  logger.info(`${signal} received, starting graceful shutdown...`);
+  
+  // Give ongoing requests 30 seconds to complete
+  const shutdownTimeout = setTimeout(() => {
+    logger.error('Shutdown timeout - forcing exit');
+    process.exit(1);
+  }, 30000);
+  
+  try {
+    // Stop accepting new connections
+    server.close(() => {
+      logger.info('HTTP server closed');
+    });
+    
+    // Save all pending job data
+    const pendingJobs = Array.from(jobDataStorage.entries());
+    logger.info(`Saving ${pendingJobs.length} jobs before shutdown...`);
+    
+    await Promise.all(pendingJobs.map(async ([jobId, data]) => {
+      try {
+        await setJobData(jobId, data);
+      } catch (err) {
+        logger.error(`Failed to save job ${jobId} during shutdown:`, err);
+      }
+    }));
+    
+    // Save credits and free pass data
+    await saveCreditsStorage();
+    await saveFreePassUsage();
+    
+    clearTimeout(shutdownTimeout);
+    logger.info('Graceful shutdown complete');
+    process.exit(0);
+  } catch (error) {
+    logger.error('Error during shutdown:', error);
+    process.exit(1);
+  }
+}
+
+// Register shutdown handlers
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
 /*
 // Start everything

@@ -10,11 +10,17 @@ spec:
         run.googleapis.com/service-account: "cv-opt@vaulted-bivouac-417511.iam.gserviceaccount.com"
         run.googleapis.com/container-port: "8080"
         run.googleapis.com/container-protocol: "http2"
+        run.googleapis.com/cpu-throttling: "false"
+        run.googleapis.com/execution-environment: "gen2"
     spec:
       containers:
       - image: us-east1-docker.pkg.dev/vaulted-bivouac-417511/cv-opt-repo/cv-opt:v1
         ports:
         - containerPort: 8080
+        lifecycle:
+          preStop:
+            exec:
+              command: ["/bin/sh", "-c", "sleep 15"]
         env:
         - name: OPENAI_API_KEY
           valueFrom:

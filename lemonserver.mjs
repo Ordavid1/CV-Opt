@@ -862,7 +862,7 @@ app.post('/api/refinement-status', express.json(), async (req, res) => {
       const now = new Date();
       const minutesElapsed = (now - startTime) / (1000 * 60);
       
-      // If processing for more than 10 minutes, it's likely stuck
+      // If processing for more than 5 minutes, it's likely stuck
       if (minutesElapsed > 5) {
         logger.warn(`Job ${jobId} has been processing for ${minutesElapsed.toFixed(1)} minutes - likely stuck`);
         
@@ -871,7 +871,7 @@ app.post('/api/refinement-status', express.json(), async (req, res) => {
           ...jobData,
           status: 'failed',
           error: {
-            message: 'Refinement process timed out after 10 minutes',
+            message: 'Refinement process timed out after 5 minutes',
             stage: 'processing_timeout',
             minutesElapsed: minutesElapsed.toFixed(1),
             originalStatus: 'processing'

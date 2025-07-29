@@ -75,21 +75,28 @@ async function retryCloudOperation(operation, maxRetries = 3) {
   throw lastError;
 }
 
-// Update setJobData to use retry logic
+// Update setJobData to use retry logic and ensure data is saved
 export async function setJobData(jobId, data) {
+  // Always update in-memory storage first
   jobDataStorage.set(jobId, data);
+  logger.info(`Job data updated in memory for ${jobId}, status: ${data.status}`);
   
   if (bucket) {
-    await retryCloudOperation(async () => {
-      const file = bucket.file(`jobs/${jobId}.json`);
-      await file.save(JSON.stringify(data), {
-        contentType: 'application/json',
-        metadata: {
-          cacheControl: 'no-cache, max-age=0'
-        }
+    try {
+      await retryCloudOperation(async () => {
+        const file = bucket.file(`jobs/${jobId}.json`);
+        await file.save(JSON.stringify(data), {
+          contentType: 'application/json',
+          metadata: {
+            cacheControl: 'no-cache, max-age=0'
+          }
+        });
+        logger.info(`Job data persisted to Cloud Storage: ${jobId}, status: ${data.status}`);
       });
-      logger.info(`Job data persisted to Cloud Storage: ${jobId}`);
-    });
+    } catch (error) {
+      logger.error(`Failed to persist job ${jobId} to Cloud Storage after retries:`, error);
+      // Don't throw - at least we have it in memory
+    }
   }
 }
 
@@ -469,14 +476,7 @@ if (DATA_STORAGE_TYPE !== 'memory' && DATA_STORAGE_TYPE !== 'cloud-storage') {
   }, 60000); // Save every minute
 }
 
-// Graceful shutdown
-process.on('SIGTERM', async () => {
-  logger.info('SIGTERM received, saving data before shutdown');
-  if (DATA_STORAGE_TYPE !== 'memory') {
-    await saveCreditsStorage();
-    saveFreePassUsage();
-  }
-});
+// Graceful shutdown handled in index.mjs
 
 // Initialize storage modules
 initFreePassStorage();
@@ -511,18 +511,7 @@ if (DATA_STORAGE_TYPE === 'file') {
   }, 300000); // Save every 5 minutes
 }
 
-// Single graceful shutdown handler
-process.on('SIGTERM', async () => {
-  logger.info('SIGTERM received, saving data before shutdown');
-  try {
-    await saveCreditsStorage();
-    if (DATA_STORAGE_TYPE === 'file') {
-      saveFreePassUsage();
-    }
-  } catch (error) {
-    logger.error('Error during shutdown save:', error);
-  }
-});
+// Graceful shutdown now handled centrally in index.mjs
 
 // Export initBucket so it can be invoked at server startup
 export { initBucket };
